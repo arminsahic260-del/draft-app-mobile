@@ -2,8 +2,11 @@
 // Proprietary and confidential. See LICENSE for details.
 
 import { initializeApp, type FirebaseApp } from 'firebase/app';
+// @ts-ignore - getReactNativePersistence is re-exported from firebase/auth/react-native
 import {
+  initializeAuth,
   getAuth,
+  getReactNativePersistence,
   GoogleAuthProvider,
   signInWithCredential,
   signOut as firebaseSignOut,
@@ -25,6 +28,7 @@ import {
   getDocs,
   type Firestore,
 } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { ENV } from '../config/env';
 
@@ -53,8 +57,32 @@ function getApp(): FirebaseApp {
 }
 
 export function getFirebaseAuth(): Auth {
-  if (!_auth) _auth = getAuth(getApp());
+  if (!_auth) {
+    try {
+      _auth = initializeAuth(getApp(), {
+        persistence: getReactNativePersistence(AsyncStorage),
+      });
+    } catch {
+      // initializeAuth throws if called twice; fall back to getAuth
+      _auth = getAuth(getApp());
+    }
+  }
   return _auth;
+}
+
+// Configure native Google Sign-In — must be called once at app startup
+let _googleConfigured = false;
+export function configureGoogleSignIn(): void {
+  if (_googleConfigured) return;
+  if (!ENV.GOOGLE_SIGNIN_WEB_CLIENT_ID) {
+    console.warn('GOOGLE_SIGNIN_WEB_CLIENT_ID not set; Google Sign-In will not work');
+    return;
+  }
+  GoogleSignin.configure({
+    webClientId: ENV.GOOGLE_SIGNIN_WEB_CLIENT_ID,
+    offlineAccess: false,
+  });
+  _googleConfigured = true;
 }
 
 export function getFirebaseDb(): Firestore {

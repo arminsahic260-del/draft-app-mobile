@@ -45,7 +45,15 @@
       "eas": {
         "projectId": "9c0b4ae9-9f99-40af-a2d4-bde0d11823aa"
       },
-      "router": {}
+      "router": {},
+      "firebaseApiKey": "AIzaSyDLznbOeOTPoztf0uhv2Mk5UJJpL9DcSBQ",
+      "firebaseAuthDomain": "draft-d5eb0.firebaseapp.com",
+      "firebaseProjectId": "draft-d5eb0",
+      "firebaseStorageBucket": "draft-d5eb0.firebasestorage.app",
+      "firebaseMessagingSenderId": "991197514189",
+      "firebaseAppId": "1:991197514189:android:e457518dcb05a2a0cc5c84",
+      "googleSignInWebClientId": "991197514189-4fcnnf4jclu30tqapr4avna06hheiba1.apps.googleusercontent.com",
+      "apiBase": "https://draft-helper.vercel.app"
     },
     "owner": "imglobal"
   }

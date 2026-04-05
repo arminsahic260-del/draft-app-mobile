@@ -22,4 +22,7 @@ export const ENV = {
   FIREBASE_STORAGE_BUCKET:      (extra.firebaseStorageBucket as string) ?? '',
   FIREBASE_MESSAGING_SENDER_ID: (extra.firebaseMessagingSenderId as string) ?? '',
   FIREBASE_APP_ID:              (extra.firebaseAppId as string) ?? '',
+
+  // Google Sign-In (native)
+  GOOGLE_SIGNIN_WEB_CLIENT_ID:  (extra.googleSignInWebClientId as string) ?? '',
 };
