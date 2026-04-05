@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Armin Sahic. All rights reserved.
 // Proprietary and confidential. See LICENSE for details.
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { View, Text, Pressable, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -145,10 +145,10 @@ export default function ResultsScreen() {
       .filter((x): x is { id: string; name: string; ddragonId: string; tags: string[] } => x !== null),
     [draft.picks, draft.playerTeam]);
 
-  const handleAskAI = (rec: Recommendation) => async () => {
+  const askAI = useCallback(async (rec: Recommendation): Promise<string> => {
     const mastery = player.masteries.find((m) => m.championId === rec.championId);
     return getPickExplanation(rec, draft, mastery, allChampions);
-  };
+  }, [draft, player.masteries]);
 
   return (
     <SafeAreaView className="flex-1 bg-lol-dark">
@@ -191,7 +191,7 @@ export default function ResultsScreen() {
             rank={i + 1}
             locked={!isPro && i > 0}
             onPick={() => router.back()}
-            onAskAI={!isPro && i > 0 ? undefined : handleAskAI(rec)}
+            onAskAI={!isPro && i > 0 ? undefined : () => askAI(rec)}
             enemyPicks={enemyPicks}
             allyPicks={allyPicks}
             matchupsData={matchupsData}

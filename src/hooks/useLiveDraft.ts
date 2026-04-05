@@ -4,7 +4,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { openLcuEventStream } from '../api/lcu';
 import type { LiveDraftEvent, LcuStatus } from '../types';
-import type { CustomEvent } from 'react-native-sse';
 
 export type LiveConnectionStatus = 'connecting' | 'connected' | 'waiting' | 'active' | 'ended' | 'error';
 

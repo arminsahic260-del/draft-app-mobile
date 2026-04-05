@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Armin Sahic. All rights reserved.
 // Proprietary and confidential. See LICENSE for details.
 
-import { useMemo, useEffect, useState, useCallback } from 'react';
+import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, Pressable, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -79,12 +79,17 @@ export default function DraftScreen() {
   const [showComplete, setShowComplete] = useState(false);
   const [detailChampId, setDetailChampId] = useState<string | null>(null);
 
+  // Ref for latest draft so bot timeout always reads fresh state
+  const draftRef = useRef(draft);
+  useEffect(() => { draftRef.current = draft; });
+
   // Sync grid when draft advances
   useEffect(() => {
     setGridMode(draft.currentAction);
     setGridTeam(draft.currentTeam);
     if (draft.phase === 'complete') setShowComplete(true);
     else timer.reset(30);
+    // eslint-disable-next-line react-hooks/exhaustive-deps — timer.reset is stable (useCallback)
   }, [draft.currentTeam, draft.phase, draft.currentAction]);
 
   // Bot auto-picks in practice mode
@@ -95,18 +100,19 @@ export default function DraftScreen() {
     }
     setBotThinking(true);
     const t = setTimeout(() => {
+      const d = draftRef.current;
       const unavailable: string[] = [];
-      for (const slot of [...draft.picks.blue, ...draft.picks.red, ...draft.bans.blue, ...draft.bans.red]) {
+      for (const slot of [...d.picks.blue, ...d.picks.red, ...d.bans.blue, ...d.bans.red]) {
         if (slot) unavailable.push(slot);
       }
-      const id = getBotAction(draft, draft.currentAction, champions, unavailable);
+      const id = getBotAction(d, d.currentAction, champions, unavailable);
       if (!id) return;
-      if (draft.currentAction === 'ban') banChampion(id, 'red');
+      if (d.currentAction === 'ban') banChampion(id, 'red');
       else pickChampion(id, 'red');
       setBotThinking(false);
     }, 1100);
     return () => clearTimeout(t);
-  }, [draft.currentTeam, draft.currentAction, draft.phase, practiceMode]);
+  }, [draft.currentTeam, draft.currentAction, draft.phase, practiceMode, banChampion, pickChampion]);
 
   // Auto-save to AsyncStorage + Firestore
   useEffect(() => {

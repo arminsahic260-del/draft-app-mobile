@@ -101,12 +101,14 @@ export default function HistoryScreen() {
   const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
+    let stale = false;
     (async () => {
       setLoading(true);
       // Prefer Firestore when signed in
       if (isFirebaseConfigured && auth.user?.uid) {
         try {
           const docs = await loadRecentDrafts(auth.user.uid, 50);
+          if (stale) return;
           setRecords(docs.map(toLocal));
           setSource('cloud');
           setLoading(false);
@@ -115,10 +117,12 @@ export default function HistoryScreen() {
       }
       // Fallback: AsyncStorage
       const local = await loadHistory();
+      if (stale) return;
       setRecords(local);
       setSource('local');
       setLoading(false);
     })();
+    return () => { stale = true; };
   }, [auth.user?.uid]);
 
   const handleClear = async () => {

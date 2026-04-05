@@ -18,14 +18,16 @@ export function useTimer(initialSeconds = 30) {
     intervalRef.current = setInterval(() => {
       setSeconds((s) => {
         if (s <= 1) {
-          clearInterval(intervalRef.current!);
+          if (intervalRef.current) clearInterval(intervalRef.current);
           setIsActive(false);
           return 0;
         }
         return s - 1;
       });
     }, 1000);
-    return () => clearInterval(intervalRef.current!);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   // resetKey is included so calling reset() always restarts the interval
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, resetKey]);

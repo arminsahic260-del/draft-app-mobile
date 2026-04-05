@@ -124,7 +124,7 @@ export default function DraftCompleteModal({
                 <ScoreMeter score={blueScore} team="blue" />
                 <View className="gap-1.5">
                   {draft.picks.blue.map((id, i) => (
-                    <ChampionRow key={i} championId={id} champions={champions} role={draft.pickRoles.blue[i] ?? undefined} />
+                    <ChampionRow key={id ?? `blue-${i}`} championId={id} champions={champions} role={draft.pickRoles.blue[i] ?? undefined} />
                   ))}
                 </View>
                 {blueAnalysis.warnings.length > 0 && (
@@ -140,7 +140,7 @@ export default function DraftCompleteModal({
                 <ScoreMeter score={redScore} team="red" />
                 <View className="gap-1.5">
                   {draft.picks.red.map((id, i) => (
-                    <ChampionRow key={i} championId={id} champions={champions} role={draft.pickRoles.red[i] ?? undefined} />
+                    <ChampionRow key={id ?? `red-${i}`} championId={id} champions={champions} role={draft.pickRoles.red[i] ?? undefined} />
                   ))}
                 </View>
                 {redAnalysis.warnings.length > 0 && (

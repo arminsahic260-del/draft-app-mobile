@@ -11,11 +11,15 @@ export type LcuEventTypes = 'status' | 'session_start' | 'session_update' | 'ses
 
 export async function fetchLcuStatus(): Promise<LcuStatus | null> {
   if (!PROXY_URL) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
   try {
-    const res = await fetch(`${PROXY_URL}/lcu/status`);
+    const res = await fetch(`${PROXY_URL}/lcu/status`, { signal: controller.signal });
+    clearTimeout(timeout);
     if (!res.ok) return null;
     return await res.json();
   } catch {
+    clearTimeout(timeout);
     return null;
   }
 }

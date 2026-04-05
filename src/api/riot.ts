@@ -35,22 +35,33 @@ export async function fetchPlayer(summonerInput: string): Promise<PlayerProfile>
 
 async function fetchViaProxy(name: string, tag: string): Promise<PlayerProfile> {
   const url = `${PROXY_URL}/summoner?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}&region=${RIOT_REGION}`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    const msg = await res.text().catch(() => res.statusText);
-    throw new Error(`Summoner not found: ${msg}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      const msg = await res.text().catch(() => res.statusText);
+      throw new Error(`Summoner not found: ${msg}`);
+    }
+    const data: ProxySummonerResponse = await res.json();
+    return {
+      summonerName: data.summonerName,
+      tagLine:      data.tagLine,
+      tier:         data.tier,
+      division:     data.division,
+      lp:           data.lp,
+      wins:         data.wins,
+      losses:       data.losses,
+      masteries:    data.masteries,
+    };
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('Request timed out — check your connection.');
+    }
+    throw err;
   }
-  const data: ProxySummonerResponse = await res.json();
-  return {
-    summonerName: data.summonerName,
-    tagLine:      data.tagLine,
-    tier:         data.tier,
-    division:     data.division,
-    lp:           data.lp,
-    wins:         data.wins,
-    losses:       data.losses,
-    masteries:    data.masteries,
-  };
 }
 
 async function fetchMock(name: string, tag: string): Promise<PlayerProfile> {

@@ -46,21 +46,33 @@ ${mastery ? `- Player has ${mastery.gamesPlayed} games on this champion at ${mas
 
 Focus on: win condition, synergies with allies, counters to enemies, or power spike. Be specific, not generic.`;
 
-  const response = await fetch(CLAUDE_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 150,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(CLAUDE_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 150,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
 
-  if (!response.ok) throw new Error(`Claude API error: ${response.status}`);
-  const data = await response.json();
-  return data.content?.[0]?.text ?? 'No explanation available.';
+    if (!response.ok) throw new Error(`Claude API error: ${response.status}`);
+    const data = await response.json();
+    return data.content?.[0]?.text ?? 'No explanation available.';
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err instanceof Error && err.name === 'AbortError') {
+      return 'AI explanation timed out — try again.';
+    }
+    return 'Could not load AI explanation.';
+  }
 }

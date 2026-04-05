@@ -26,6 +26,7 @@ import {
   orderBy,
   limit,
   getDocs,
+  runTransaction,
   type Firestore,
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -158,15 +159,18 @@ export async function getUserDoc(uid: string): Promise<UserDoc | null> {
 export async function incrementDraftCount(uid: string): Promise<{ count: number; isPro: boolean }> {
   const db  = getFirebaseDb();
   const ref = doc(db, 'users', uid);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return { count: 0, isPro: false };
 
-  const data = snap.data() as UserDoc;
-  const isNewDay = data.lastDraftDate !== today();
-  const newCount = isNewDay ? 1 : data.dailyDraftCount + 1;
+  return runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    if (!snap.exists()) return { count: 0, isPro: false };
 
-  await updateDoc(ref, { dailyDraftCount: newCount, lastDraftDate: today() });
-  return { count: newCount, isPro: data.isPro };
+    const data = snap.data() as UserDoc;
+    const isNewDay = data.lastDraftDate !== today();
+    const newCount = isNewDay ? 1 : data.dailyDraftCount + 1;
+
+    transaction.update(ref, { dailyDraftCount: newCount, lastDraftDate: today() });
+    return { count: newCount, isPro: data.isPro };
+  });
 }
 
 export const FREE_DRAFT_LIMIT = 3;

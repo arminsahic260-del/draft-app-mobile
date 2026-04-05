@@ -74,10 +74,14 @@ export function getBanSuggestions(
       } else if (threat > 0.3 && meta >= 0.75) {
         reason = `Strong meta pick that counters your champion pool`;
       } else if (threat > 0.3) {
-        const names = playerMasteries
+        const counterChamps = playerMasteries
           .filter((m) => (matchups[c.id]?.[m.championId] ?? 0) > 1)
-          .slice(0, 2)
-          .map((m) => m.championId.charAt(0).toUpperCase() + m.championId.slice(1))
+          .slice(0, 2);
+        const names = counterChamps
+          .map((m) => {
+            const found = champions.find((ch) => ch.id === m.championId);
+            return found ? found.name : m.championId.charAt(0).toUpperCase() + m.championId.slice(1);
+          })
           .join(' & ');
         reason = names ? `Directly counters ${names}` : `Threatens your champion pool`;
       } else if (meta >= 0.9) {
