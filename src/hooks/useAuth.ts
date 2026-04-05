@@ -51,13 +51,20 @@ export function useAuth(): AuthState {
       const u   = await signInWithGoogle();
       const doc = await getUserDoc(u.uid);
       setUserDoc(doc);
+    } catch (err) {
+      // User cancelled or network error — don't crash
+      console.warn('Sign-in failed:', err);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSignOut = async () => {
-    await signOut();
+    try {
+      await signOut();
+    } catch (err) {
+      console.warn('Sign-out failed:', err);
+    }
     setUser(null);
     setUserDoc(null);
   };

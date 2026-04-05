@@ -92,7 +92,7 @@ export default function ChampionDetailModal({ champion, onClose }: ChampionDetai
   const dmgLabel = champion.damageType === 'AD' ? '\u2694 AD' : champion.damageType === 'AP' ? '\u2726 AP' : '\u26A1 Mixed';
 
   return (
-    <Modal transparent animationType="fade">
+    <Modal transparent animationType="fade" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/80 justify-center items-center px-4" onPress={onClose}>
         <Pressable className="bg-lol-darker border border-lol-border rounded-xl w-full max-w-lg max-h-[85%] overflow-hidden" onPress={() => {}}>
           <ScrollView>

@@ -77,10 +77,14 @@ export default function DraftCompleteModal({
   const [copied, setCopied] = useState(false);
 
   const handleShare = async () => {
-    const payload = JSON.stringify({ picks: draft.picks, bans: draft.bans, role: draft.playerRole });
-    await Clipboard.setStringAsync(payload);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    try {
+      const payload = JSON.stringify({ picks: draft.picks, bans: draft.bans, role: draft.playerRole });
+      await Clipboard.setStringAsync(payload);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch (err) {
+      console.warn('Clipboard error:', err);
+    }
   };
 
   const blueIds = draft.picks.blue.filter((id): id is string => id !== null);
@@ -92,7 +96,7 @@ export default function DraftCompleteModal({
   const winner = blueScore > redScore + 5 ? 'blue' : redScore > blueScore + 5 ? 'red' : 'even';
 
   return (
-    <Modal transparent animationType="fade">
+    <Modal transparent animationType="fade" onRequestClose={onContinueEditing}>
       <View className="flex-1 bg-black/75 justify-center items-center px-4">
         <View className="bg-lol-darker border border-lol-border rounded-xl w-full max-w-2xl max-h-[85%] overflow-hidden">
           <ScrollView>

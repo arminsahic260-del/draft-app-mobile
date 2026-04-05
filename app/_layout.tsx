@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppProvider } from '../src/context/AppContext';
 import { useAuth } from '../src/hooks/useAuth';
 import { configureGoogleSignIn, isFirebaseConfigured } from '../src/api/firebase';
+import ErrorBoundary from '../src/components/ErrorBoundary';
 
 export default function RootLayout() {
   useEffect(() => {
@@ -29,17 +30,19 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      <AppProvider auth={auth}>
-        <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: '#0a0a13' },
-            animation: 'slide_from_right',
-          }}
-        />
-      </AppProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <AppProvider auth={auth}>
+          <StatusBar style="light" />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: '#0a0a13' },
+              animation: 'slide_from_right',
+            }}
+          />
+        </AppProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }

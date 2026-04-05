@@ -82,10 +82,11 @@ const RULES: SynergyRule[] = [
     label: 'Hyper Growth',
     description: 'Lulu ult on Jinx lets her fully commit as a raid boss',
     strength: 'A',
-    check: (ids) =>
-      ids.includes('lulu') && (ids.includes('jinx') || ids.includes('kaisa') || ids.includes('aphelios'))
-        ? ['lulu', ids.find((id) => ['jinx', 'kaisa', 'aphelios'].includes(id))!]
-        : null,
+    check: (ids) => {
+      if (!ids.includes('lulu')) return null;
+      const carry = ids.find((id) => ['jinx', 'kaisa', 'aphelios'].includes(id));
+      return carry ? ['lulu', carry] : null;
+    },
   },
   {
     id: 'nautilus-leona',

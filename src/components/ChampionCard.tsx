@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Armin Sahic. All rights reserved.
 // Proprietary and confidential. See LICENSE for details.
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, Image, Pressable } from 'react-native';
 import type { Champion, PlayerMastery } from '../types';
 
@@ -49,6 +49,7 @@ export default function ChampionCard({
   tier,
 }: ChampionCardProps) {
   const [imgFailed, setImgFailed] = useState(false);
+  useEffect(() => setImgFailed(false), [champion.ddragonId]);
   const isSm = size === 'sm';
 
   const tileSize = isSm ? 'w-8 h-8' : 'w-12 h-12';

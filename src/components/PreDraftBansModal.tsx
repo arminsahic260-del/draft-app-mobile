@@ -21,7 +21,7 @@ interface PreDraftBansModalProps {
 
 export default function PreDraftBansModal({ suggestions, onBan, onClose, playerRole }: PreDraftBansModalProps) {
   return (
-    <Modal transparent animationType="fade">
+    <Modal transparent animationType="fade" onRequestClose={onClose}>
       <View className="flex-1 bg-black/75 justify-center items-center px-4">
         <View className="bg-lol-card border border-lol-border rounded-xl w-full max-w-md overflow-hidden">
 
