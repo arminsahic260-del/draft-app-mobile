@@ -1,0 +1,411 @@
+// Copyright (c) 2026 Armin Sahic. All rights reserved.
+// Proprietary and confidential. See LICENSE for details.
+
+import { useMemo, useEffect, useState, useCallback } from 'react';
+import { View, Text, Pressable, ScrollView, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { useAppContext } from '../src/context/AppContext';
+import { useDraft } from '../src/hooks/useDraft';
+import { useLiveDraft } from '../src/hooks/useLiveDraft';
+import { useTimer } from '../src/hooks/useTimer';
+import ChampionGrid from '../src/components/ChampionGrid';
+import DraftBoard from '../src/components/DraftBoard';
+import CompAnalysisComponent from '../src/components/CompAnalysis';
+import Timer from '../src/components/Timer';
+import SynergyPanel from '../src/components/SynergyPanel';
+import MatchupIntel from '../src/components/MatchupIntel';
+import PreDraftBansModal from '../src/components/PreDraftBansModal';
+import DraftCompleteModal from '../src/components/DraftCompleteModal';
+import ChampionDetailModal from '../src/components/ChampionDetailModal';
+import { analyzeComp, draftScore } from '../src/engine/compAnalysis';
+import { getRecommendations } from '../src/engine/recommend';
+import { getBanSuggestions } from '../src/engine/banRecommend';
+import { getBotAction } from '../src/engine/botDraft';
+import { detectSynergies } from '../src/engine/synergyDetect';
+import { getChampionImageUrl } from '../src/components/ChampionCard';
+import { saveDraft, isFirebaseConfigured } from '../src/api/firebase';
+import championsData from '../src/data/champions.json';
+import type { Champion, Role, Team, DraftAction, Recommendation, DraftState, CompAnalysis, LiveDraftEvent, LocalDraftRecord } from '../src/types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const champions = championsData as Champion[];
+
+function getWeaknessCallout(
+  enemyAnalysis: CompAnalysis,
+  allyAnalysis: CompAnalysis,
+): { text: string; icon: string; color: string } | null {
+  if (enemyAnalysis.adRatio >= 0.8 && enemyAnalysis.apRatio <= 0.2)
+    return { text: 'Enemy is full AD \u2014 consider armour/peel', icon: '\uD83D\uDEE1\uFE0F', color: 'text-lol-gold' };
+  if (enemyAnalysis.apRatio >= 0.8 && enemyAnalysis.adRatio <= 0.2)
+    return { text: 'Enemy is full AP \u2014 pick MR / engage them', icon: '\u26A1', color: 'text-lol-blue' };
+  if (enemyAnalysis.hasEngage && enemyAnalysis.totalCc >= 20 && !allyAnalysis.hasEngage)
+    return { text: 'Enemy has heavy engage \u2014 pick disengage or poke', icon: '\uD83C\uDFF9', color: 'text-lol-text-bright' };
+  if (!enemyAnalysis.hasEngage && !enemyAnalysis.hasPoke)
+    return { text: 'Enemy has no engage \u2014 dive or teamfight freely', icon: '\u2694\uFE0F', color: 'text-lol-green' };
+  if (enemyAnalysis.totalCc === 0)
+    return { text: 'Enemy has zero CC \u2014 carry carries!', icon: '\uD83D\uDCA5', color: 'text-lol-green' };
+  return null;
+}
+
+export default function DraftScreen() {
+  const { player, role, auth, practiceMode, liveMode, setRecommendations, setDraftSnapshot, resetAll } = useAppContext();
+
+  if (!player) {
+    router.replace('/');
+    return null;
+  }
+
+  const playerTeam: Team = 'blue';
+  const { draft, pickChampion, banChampion, setAction, setRole, allPickedOrBanned, undo, canUndo, reset, syncLive } =
+    useDraft(role, playerTeam);
+  const timer = useTimer(30);
+
+  // Live mode
+  const handleLiveEvent = useCallback((event: LiveDraftEvent) => {
+    syncLive(event);
+  }, [syncLive]);
+  const handleSessionEnd = useCallback((_reason: string) => {}, []);
+  const { status: liveStatus } = useLiveDraft({
+    onEvent: handleLiveEvent,
+    onSessionEnd: handleSessionEnd,
+    enabled: !!liveMode,
+  });
+
+  const [gridMode, setGridMode] = useState<DraftAction>(draft.currentAction);
+  const [gridTeam, setGridTeam] = useState<Team>(draft.currentTeam);
+  const [, setBotThinking] = useState(false);
+  const [showPreDraft, setShowPreDraft] = useState(true);
+  const [showComplete, setShowComplete] = useState(false);
+  const [detailChampId, setDetailChampId] = useState<string | null>(null);
+
+  // Sync grid when draft advances
+  useEffect(() => {
+    setGridMode(draft.currentAction);
+    setGridTeam(draft.currentTeam);
+    if (draft.phase === 'complete') setShowComplete(true);
+    else timer.reset(30);
+  }, [draft.currentTeam, draft.phase, draft.currentAction]);
+
+  // Bot auto-picks in practice mode
+  useEffect(() => {
+    if (!practiceMode || draft.phase === 'complete' || draft.currentTeam !== 'red') {
+      setBotThinking(false);
+      return;
+    }
+    setBotThinking(true);
+    const t = setTimeout(() => {
+      const unavailable: string[] = [];
+      for (const slot of [...draft.picks.blue, ...draft.picks.red, ...draft.bans.blue, ...draft.bans.red]) {
+        if (slot) unavailable.push(slot);
+      }
+      const id = getBotAction(draft, draft.currentAction, champions, unavailable);
+      if (!id) return;
+      if (draft.currentAction === 'ban') banChampion(id, 'red');
+      else pickChampion(id, 'red');
+      setBotThinking(false);
+    }, 1100);
+    return () => clearTimeout(t);
+  }, [draft.currentTeam, draft.currentAction, draft.phase, practiceMode]);
+
+  // Auto-save to AsyncStorage + Firestore
+  useEffect(() => {
+    if (draft.phase !== 'complete') return;
+    const blueIds = draft.picks.blue.filter((id): id is string => id !== null);
+    const redIds  = draft.picks.red.filter((id): id is string => id !== null);
+    if (blueIds.length === 0 && redIds.length === 0) return;
+    const blueA = analyzeComp(blueIds, champions);
+    const redA  = analyzeComp(redIds,  champions);
+    const record: LocalDraftRecord = {
+      id: Date.now().toString(),
+      createdAt: new Date().toISOString(),
+      playerRole: role,
+      picks: draft.picks,
+      bans: draft.bans,
+      blueScore: draftScore(blueA),
+      redScore:  draftScore(redA),
+    };
+    // AsyncStorage (local)
+    AsyncStorage.getItem('draft-history').then((raw) => {
+      const existing: LocalDraftRecord[] = JSON.parse(raw ?? '[]');
+      const last = existing[0];
+      if (!last || Math.abs(Number(record.id) - Number(last.id)) > 5000) {
+        existing.unshift(record);
+        AsyncStorage.setItem('draft-history', JSON.stringify(existing.slice(0, 50)));
+      }
+    }).catch(() => {});
+    // Firestore (cloud)
+    if (isFirebaseConfigured && auth.user?.uid) {
+      saveDraft({
+        uid: auth.user.uid,
+        createdAt: new Date().toISOString(),
+        playerRole: role,
+        picks: draft.picks,
+        bans: draft.bans,
+        topRecommendation: recommendations[0]?.championId,
+      }).catch(() => {});
+    }
+  }, [draft.phase]);
+
+  const handlePreDraftBan = (championId: string) => {
+    banChampion(championId, 'blue');
+  };
+
+  const detailChampion = useMemo(() =>
+    detailChampId ? champions.find((c) => c.id === detailChampId) ?? null : null,
+    [detailChampId]);
+
+  const handleModeChange = (newMode: DraftAction, newTeam: Team) => {
+    setGridMode(newMode);
+    setGridTeam(newTeam);
+    setAction(newMode, newTeam);
+  };
+
+  const handleChampionSelect = (championId: string) => {
+    if (liveMode) return;
+    if (draft.phase === 'complete') return;
+    if (practiceMode && draft.currentTeam !== 'blue') return;
+    if (gridMode === 'ban') banChampion(championId, gridTeam);
+    else pickChampion(championId, gridTeam);
+  };
+
+  const blueAnalysis = useMemo(() =>
+    analyzeComp(draft.picks.blue.filter((id): id is string => id !== null), champions),
+    [draft.picks.blue]);
+  const redAnalysis = useMemo(() =>
+    analyzeComp(draft.picks.red.filter((id): id is string => id !== null), champions),
+    [draft.picks.red]);
+
+  const recommendations = useMemo(() => {
+    const total = draft.picks.blue.filter(Boolean).length + draft.picks.red.filter(Boolean).length;
+    return total >= 2 ? getRecommendations(draft, player.masteries) : [];
+  }, [draft, player.masteries]);
+
+  const banSuggestions = useMemo(() =>
+    getBanSuggestions(allPickedOrBanned, player.masteries, 5, role),
+    [allPickedOrBanned, player.masteries, role]);
+
+  const blueSynergies = useMemo(() =>
+    detectSynergies(draft.picks.blue.filter((id): id is string => id !== null), champions),
+    [draft.picks.blue]);
+  const redSynergies = useMemo(() =>
+    detectSynergies(draft.picks.red.filter((id): id is string => id !== null), champions),
+    [draft.picks.red]);
+  const enemyPickIds = useMemo(() =>
+    draft.picks.red.filter((id): id is string => id !== null),
+    [draft.picks.red]);
+
+  const handleGetRecommendations = () => {
+    const recs = getRecommendations(draft, player.masteries);
+    setRecommendations(recs);
+    setDraftSnapshot(draft);
+    router.push('/results');
+  };
+
+  const handleReset = () => {
+    reset();
+    resetAll();
+    router.replace('/');
+  };
+
+  const totalPicks = draft.picks.blue.filter(Boolean).length + draft.picks.red.filter(Boolean).length;
+  const hasPicks = draft.picks.blue.some(Boolean) || draft.picks.red.some(Boolean);
+  const isBotTurn = practiceMode && draft.currentTeam === 'red' && draft.phase !== 'complete';
+  const isGridDisabled = !!liveMode || isBotTurn;
+  const isYourTurn = draft.currentTeam === playerTeam && draft.currentAction === 'pick' && draft.phase !== 'complete';
+
+  const enemyPickCount = draft.picks.red.filter(Boolean).length;
+  const weaknessCallout = useMemo(() => {
+    if (enemyPickCount < 2) return null;
+    return getWeaknessCallout(redAnalysis, blueAnalysis);
+  }, [redAnalysis, blueAnalysis, enemyPickCount]);
+
+  const liveStatusLabel =
+    liveStatus === 'active'    ? 'Champion select active'
+    : liveStatus === 'waiting' ? 'Waiting for champion select...'
+    : liveStatus === 'connected' ? 'League client detected'
+    : liveStatus === 'ended'   ? 'Champion select ended'
+    : liveStatus === 'error'   ? 'Connection lost \u2014 reconnecting...'
+    : 'Connecting to proxy...';
+
+  return (
+    <SafeAreaView className="flex-1 bg-lol-dark">
+      {/* Live mode banner */}
+      {liveMode && (
+        <View className="bg-emerald-500/15 border-b border-emerald-500/40 px-4 py-1.5 flex-row items-center justify-center gap-3">
+          <View className={`w-2 h-2 rounded-full ${
+            liveStatus === 'active' ? 'bg-emerald-400'
+            : liveStatus === 'error' ? 'bg-red-400'
+            : 'bg-yellow-400'
+          }`} />
+          <Text className="text-xs font-semibold text-emerald-400">Live Mode</Text>
+          <Text className="text-[10px] text-lol-text">{liveStatusLabel}</Text>
+        </View>
+      )}
+
+      {/* Practice mode banner */}
+      {practiceMode && (
+        <View className="bg-lol-purple/20 border-b border-lol-purple/40 px-4 py-1.5 flex-row items-center justify-center gap-3">
+          <Text className="text-xs font-semibold text-lol-purple">Practice Mode \u2014 vs Meta Bot</Text>
+          {isBotTurn && <Text className="text-[10px] text-lol-text">Bot is thinking...</Text>}
+        </View>
+      )}
+
+      {/* Top Bar */}
+      <View className="bg-lol-darker border-b border-lol-border px-2 py-1.5 flex-row items-center justify-between gap-2">
+        <View className="flex-row items-center gap-2 flex-1 min-w-0">
+          <Text className="text-lol-gold font-bold text-sm">DraftDiff</Text>
+          <Text className="text-lol-text text-xs" numberOfLines={1}>
+            {player.summonerName} \u00B7 {role.toUpperCase()}
+          </Text>
+        </View>
+        <Timer seconds={timer.seconds} isActive={timer.isActive} />
+        <View className="flex-row gap-1">
+          <Pressable
+            onPress={undo}
+            disabled={!canUndo || !!liveMode}
+            className={`px-2 py-1 bg-lol-card border border-lol-border rounded ${(!canUndo || !!liveMode) ? 'opacity-30' : ''}`}
+          >
+            <Text className="text-lol-text text-[10px]">\u21A9</Text>
+          </Pressable>
+          {draft.phase === 'complete' && (
+            <Pressable onPress={() => setShowComplete(true)} className="px-2 py-1 bg-lol-gold rounded">
+              <Text className="text-lol-dark text-[10px] font-bold">Summary</Text>
+            </Pressable>
+          )}
+          <Pressable
+            onPress={handleGetRecommendations}
+            disabled={totalPicks < 2}
+            className={`px-2 py-1 bg-lol-purple rounded ${totalPicks < 2 ? 'opacity-40' : ''}`}
+          >
+            <Text className="text-white text-[10px] font-bold">Get Picks</Text>
+          </Pressable>
+          <Pressable onPress={handleReset} className="px-2 py-1 bg-lol-card border border-lol-border rounded">
+            <Text className="text-lol-text text-[10px]">Reset</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Main Content — scrollable left panel + grid */}
+      <View className="flex-1 flex-row">
+        {/* Left panel */}
+        <ScrollView className="w-40 border-r border-lol-border" contentContainerClassName="p-2 gap-2">
+          <DraftBoard draft={draft} champions={champions} onRoleChange={setRole} />
+
+          {weaknessCallout && (
+            <View className="flex-row items-center gap-2 bg-lol-card border border-lol-gold/20 rounded-lg px-2 py-1.5">
+              <Text className="text-base">{weaknessCallout.icon}</Text>
+              <Text className={`text-[10px] font-semibold flex-1 ${weaknessCallout.color}`}>{weaknessCallout.text}</Text>
+            </View>
+          )}
+
+          {banSuggestions.length > 0 && (
+            <View className="bg-lol-card border border-lol-red/20 rounded-lg p-2">
+              <Text className="text-[10px] font-semibold text-lol-red uppercase tracking-wide mb-1">Suggested Bans</Text>
+              {banSuggestions.map((ban) => (
+                <Pressable
+                  key={ban.championId}
+                  onPress={() => banChampion(ban.championId, draft.currentTeam)}
+                  className="flex-row items-center gap-1.5 py-1 border-b border-lol-border/50"
+                >
+                  <Image
+                    source={{ uri: getChampionImageUrl(ban.ddragonId) }}
+                    className="w-6 h-6 rounded"
+                    resizeMode="cover"
+                  />
+                  <View className="flex-1 min-w-0">
+                    <Text className="text-[10px] text-lol-text-bright font-medium">{ban.championName}</Text>
+                    <Text className="text-[8px] text-lol-text" numberOfLines={1}>{ban.reason}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          )}
+
+          {draft.picks.blue.some(Boolean) && <CompAnalysisComponent analysis={blueAnalysis} team="blue" />}
+          {blueSynergies.length > 0 && <SynergyPanel synergies={blueSynergies} team="blue" />}
+          {draft.picks.red.some(Boolean) && <CompAnalysisComponent analysis={redAnalysis} team="red" />}
+          {redSynergies.length > 0 && <SynergyPanel synergies={redSynergies} team="red" />}
+          {enemyPickIds.length > 0 && recommendations.length > 0 && (
+            <MatchupIntel enemyPickIds={enemyPickIds} topRecommendation={recommendations[0]} allChampions={champions} />
+          )}
+
+          {recommendations.length > 0 && (
+            <View className="bg-lol-card border border-lol-border rounded-lg p-2">
+              <Text className="text-[10px] font-semibold text-lol-gold uppercase tracking-wide mb-1">Suggested Picks</Text>
+              {recommendations.map((rec, i) => {
+                const champ = champions.find((c) => c.id === rec.championId);
+                return (
+                  <Pressable
+                    key={rec.championId}
+                    onPress={() => gridMode === 'pick' && pickChampion(rec.championId, gridTeam)}
+                    className="flex-row items-center justify-between py-1 border-b border-lol-border/50"
+                  >
+                    <View className="flex-row items-center gap-1.5">
+                      <Text className="text-[10px] text-lol-gold font-bold w-4">#{i + 1}</Text>
+                      {champ && (
+                        <Image source={{ uri: getChampionImageUrl(champ.ddragonId) }} className="w-5 h-5 rounded" resizeMode="cover" />
+                      )}
+                      <Text className="text-[10px] text-lol-text-bright">{rec.championName}</Text>
+                    </View>
+                    <Text className="text-[10px] text-lol-green font-medium">{rec.winProbability.toFixed(1)}%</Text>
+                  </Pressable>
+                );
+              })}
+              <Pressable onPress={handleGetRecommendations} className="mt-1 py-1 rounded bg-lol-gold/20 border border-lol-gold/40 items-center">
+                <Text className="text-lol-gold text-[10px] font-semibold">Full Analysis \u2192</Text>
+              </Pressable>
+            </View>
+          )}
+        </ScrollView>
+
+        {/* Right panel: champion grid */}
+        <View className={`flex-1 p-2 ${isGridDisabled ? 'opacity-50' : ''}`} pointerEvents={isGridDisabled ? 'none' : 'auto'}>
+          {isYourTurn && !liveMode && (
+            <View className="mb-2 flex-row items-center gap-2 bg-lol-gold/10 border border-lol-gold/40 rounded-md px-3 py-1.5">
+              <Text className="text-lol-gold text-xs font-bold uppercase tracking-widest">Your Turn!</Text>
+            </View>
+          )}
+          <ChampionGrid
+            onSelect={handleChampionSelect}
+            onChampionInfo={setDetailChampId}
+            disabledIds={allPickedOrBanned}
+            mode={gridMode}
+            currentTeam={gridTeam}
+            masteries={player.masteries}
+            playerRole={role}
+            playerTeam={playerTeam}
+            onModeChange={(practiceMode || liveMode) ? undefined : handleModeChange}
+          />
+        </View>
+      </View>
+      {/* Modals */}
+      {showPreDraft && banSuggestions.length > 0 && draft.phase !== 'complete' && (
+        <PreDraftBansModal
+          suggestions={banSuggestions}
+          onBan={handlePreDraftBan}
+          onClose={() => setShowPreDraft(false)}
+          playerRole={role}
+        />
+      )}
+
+      {showComplete && (
+        <DraftCompleteModal
+          draft={draft}
+          champions={champions}
+          recommendations={recommendations}
+          onGetRecommendations={handleGetRecommendations}
+          onContinueEditing={() => setShowComplete(false)}
+          onViewHistory={() => { setShowComplete(false); router.push('/history'); }}
+        />
+      )}
+
+      {detailChampion && (
+        <ChampionDetailModal
+          champion={detailChampion}
+          onClose={() => setDetailChampId(null)}
+        />
+      )}
+    </SafeAreaView>
+  );
+}

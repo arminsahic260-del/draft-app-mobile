@@ -1,0 +1,116 @@
+{
+  "summonerName": "DraftKing",
+  "tagLine": "NA1",
+  "tier": "Gold",
+  "division": "II",
+  "lp": 67,
+  "wins": 156,
+  "losses": 142,
+  "masteries": [
+    {
+      "championId": "ahri",
+      "masteryLevel": 7,
+      "masteryPoints": 245000,
+      "gamesPlayed": 89,
+      "winRate": 56.2
+    },
+    {
+      "championId": "syndra",
+      "masteryLevel": 7,
+      "masteryPoints": 218000,
+      "gamesPlayed": 76,
+      "winRate": 53.9
+    },
+    {
+      "championId": "orianna",
+      "masteryLevel": 7,
+      "masteryPoints": 201000,
+      "gamesPlayed": 68,
+      "winRate": 55.9
+    },
+    {
+      "championId": "zed",
+      "masteryLevel": 6,
+      "masteryPoints": 134000,
+      "gamesPlayed": 51,
+      "winRate": 49.0
+    },
+    {
+      "championId": "leblanc",
+      "masteryLevel": 6,
+      "masteryPoints": 112000,
+      "gamesPlayed": 44,
+      "winRate": 52.3
+    },
+    {
+      "championId": "viktor",
+      "masteryLevel": 6,
+      "masteryPoints": 98000,
+      "gamesPlayed": 38,
+      "winRate": 57.9
+    },
+    {
+      "championId": "kaisa",
+      "masteryLevel": 6,
+      "masteryPoints": 87000,
+      "gamesPlayed": 35,
+      "winRate": 54.3
+    },
+    {
+      "championId": "ezreal",
+      "masteryLevel": 5,
+      "masteryPoints": 73000,
+      "gamesPlayed": 29,
+      "winRate": 48.3
+    },
+    {
+      "championId": "jinx",
+      "masteryLevel": 5,
+      "masteryPoints": 61000,
+      "gamesPlayed": 24,
+      "winRate": 50.0
+    },
+    {
+      "championId": "leesin",
+      "masteryLevel": 5,
+      "masteryPoints": 54000,
+      "gamesPlayed": 21,
+      "winRate": 42.9
+    },
+    {
+      "championId": "thresh",
+      "masteryLevel": 5,
+      "masteryPoints": 47000,
+      "gamesPlayed": 19,
+      "winRate": 47.4
+    },
+    {
+      "championId": "lulu",
+      "masteryLevel": 4,
+      "masteryPoints": 38000,
+      "gamesPlayed": 16,
+      "winRate": 56.3
+    },
+    {
+      "championId": "darius",
+      "masteryLevel": 4,
+      "masteryPoints": 35000,
+      "gamesPlayed": 14,
+      "winRate": 50.0
+    },
+    {
+      "championId": "fiora",
+      "masteryLevel": 4,
+      "masteryPoints": 31000,
+      "gamesPlayed": 13,
+      "winRate": 46.2
+    },
+    {
+      "championId": "camille",
+      "masteryLevel": 4,
+      "masteryPoints": 28000,
+      "gamesPlayed": 11,
+      "winRate": 45.5
+    }
+  ]
+}
