@@ -12,7 +12,7 @@ export function parseSummonerInput(raw: string): { name: string; tag: string } {
   const parts = raw.trim().split('#');
   return {
     name: parts[0].trim(),
-    tag:  parts[1]?.trim() ?? RIOT_REGION.toUpperCase(),
+    tag:  parts[1]?.trim() || RIOT_REGION.toUpperCase(),
   };
 }
 
