@@ -8,7 +8,7 @@ import { router } from 'expo-router';
 import { useAppContext } from '../src/context/AppContext';
 import { usePlayer } from '../src/hooks/usePlayer';
 import RolePicker from '../src/components/RolePicker';
-import { isFirebaseConfigured, FREE_DRAFT_LIMIT } from '../src/api/firebase';
+import { isFirebaseConfigured, FREE_DRAFT_LIMIT, incrementDraftCount } from '../src/api/firebase';
 import { redirectToCheckout, redirectToPortal } from '../src/api/stripe';
 import { ENV } from '../src/config/env';
 import type { Role } from '../src/types';
@@ -28,7 +28,7 @@ const REGIONS = [
 ];
 
 export default function SetupScreen() {
-  const { auth, setPlayer, setRole, setPracticeMode, role } = useAppContext();
+  const { auth, setPlayer, setRole, setPracticeMode, setLiveMode, role } = useAppContext();
   const [name, setName] = useState('');
   const [region, setRegion] = useState(ENV.RIOT_REGION || 'euw1');
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
@@ -44,8 +44,19 @@ export default function SetupScreen() {
 
   const canStart = player !== null && selectedRole !== null;
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!canStart) return;
+    if (isFirebaseConfigured && auth.user && !auth.isPro) {
+      const { count } = await incrementDraftCount(auth.user.uid);
+      if (count > FREE_DRAFT_LIMIT) {
+        Alert.alert(
+          'Daily limit reached',
+          'Free accounts get 3 drafts per day. Upgrade to Pro for unlimited drafts.',
+          [{ text: 'OK' }],
+        );
+        return;
+      }
+    }
     setPlayer(player);
     setRole(selectedRole!);
     setPracticeMode(false);
@@ -53,8 +64,19 @@ export default function SetupScreen() {
     router.push('/draft');
   };
 
-  const handlePractice = () => {
+  const handlePractice = async () => {
     if (!canStart) return;
+    if (isFirebaseConfigured && auth.user && !auth.isPro) {
+      const { count } = await incrementDraftCount(auth.user.uid);
+      if (count > FREE_DRAFT_LIMIT) {
+        Alert.alert(
+          'Daily limit reached',
+          'Free accounts get 3 drafts per day. Upgrade to Pro for unlimited drafts.',
+          [{ text: 'OK' }],
+        );
+        return;
+      }
+    }
     setPlayer(player);
     setRole(selectedRole!);
     setPracticeMode(true);
@@ -292,6 +314,12 @@ export default function SetupScreen() {
                   Start Draft
                 </Text>
               </Pressable>
+
+              {isFirebaseConfigured && auth.user && !auth.isPro && (
+                <Text className="text-center text-[10px] text-lol-text/60">
+                  {Math.max(0, FREE_DRAFT_LIMIT - auth.draftCount)} of {FREE_DRAFT_LIMIT} free drafts remaining today
+                </Text>
+              )}
 
               <Pressable
                 onPress={handlePractice}
