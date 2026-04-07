@@ -53,9 +53,9 @@
       "firebaseMessagingSenderId": "991197514189",
       "firebaseAppId": "1:991197514189:android:e457518dcb05a2a0cc5c84",
       "googleSignInWebClientId": "991197514189-4fcnnf4jclu30tqapr4avna06hheiba1.apps.googleusercontent.com",
-      "riotProxyUrl": "https://draft-helper.vercel.app/api",
+      "riotProxyUrl": "https://draft-app-mobile.vercel.app/api",
       "riotRegion": "eun1",
-      "apiBase": "https://draft-helper.vercel.app"
+      "apiBase": "https://draft-app-mobile.vercel.app"
     },
     "owner": "imglobal"
   }
