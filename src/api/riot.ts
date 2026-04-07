@@ -8,11 +8,12 @@ import { ENV } from '../config/env';
 const PROXY_URL   = ENV.RIOT_PROXY_URL || undefined;
 const RIOT_REGION = ENV.RIOT_REGION || 'euw1';
 
-export function parseSummonerInput(raw: string): { name: string; tag: string } {
+export function parseSummonerInput(raw: string, region?: string): { name: string; tag: string } {
   const parts = raw.trim().split('#');
+  const defaultRegion = region || RIOT_REGION;
   return {
     name: parts[0].trim(),
-    tag:  parts[1]?.trim() || RIOT_REGION.toUpperCase(),
+    tag:  parts[1]?.trim() || defaultRegion.toUpperCase(),
   };
 }
 
@@ -27,14 +28,15 @@ interface ProxySummonerResponse {
   masteries: PlayerMastery[];
 }
 
-export async function fetchPlayer(summonerInput: string): Promise<PlayerProfile> {
-  const { name, tag } = parseSummonerInput(summonerInput);
-  if (PROXY_URL) return fetchViaProxy(name, tag);
+export async function fetchPlayer(summonerInput: string, region?: string): Promise<PlayerProfile> {
+  const activeRegion = region || RIOT_REGION;
+  const { name, tag } = parseSummonerInput(summonerInput, activeRegion);
+  if (PROXY_URL) return fetchViaProxy(name, tag, activeRegion);
   return fetchMock(name, tag);
 }
 
-async function fetchViaProxy(name: string, tag: string): Promise<PlayerProfile> {
-  const url = `${PROXY_URL}/summoner?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}&region=${RIOT_REGION}`;
+async function fetchViaProxy(name: string, tag: string, region: string): Promise<PlayerProfile> {
+  const url = `${PROXY_URL}/summoner?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}&region=${region}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
   try {

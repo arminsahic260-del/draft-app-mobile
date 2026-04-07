@@ -10,13 +10,13 @@ export function usePlayer() {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
 
-  const lookupPlayer = useCallback(async (summonerInput: string) => {
+  const lookupPlayer = useCallback(async (summonerInput: string, region?: string) => {
     setLoading(true);
     setError(null);
     setPlayer(null);
 
     try {
-      const profile = await fetchPlayer(summonerInput);
+      const profile = await fetchPlayer(summonerInput, region);
       setPlayer(profile);
     } catch (err) {
       setError(

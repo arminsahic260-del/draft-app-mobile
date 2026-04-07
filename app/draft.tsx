@@ -10,11 +10,8 @@ import { useDraft } from '../src/hooks/useDraft';
 import { useLiveDraft } from '../src/hooks/useLiveDraft';
 import { useTimer } from '../src/hooks/useTimer';
 import ChampionGrid from '../src/components/ChampionGrid';
-import DraftBoard from '../src/components/DraftBoard';
-import CompAnalysisComponent from '../src/components/CompAnalysis';
+import CompactDraftStrip from '../src/components/CompactDraftStrip';
 import Timer from '../src/components/Timer';
-import SynergyPanel from '../src/components/SynergyPanel';
-import MatchupIntel from '../src/components/MatchupIntel';
 import PreDraftBansModal from '../src/components/PreDraftBansModal';
 import DraftCompleteModal from '../src/components/DraftCompleteModal';
 import ChampionDetailModal from '../src/components/ChampionDetailModal';
@@ -22,7 +19,6 @@ import { analyzeComp, draftScore } from '../src/engine/compAnalysis';
 import { getRecommendations } from '../src/engine/recommend';
 import { getBanSuggestions } from '../src/engine/banRecommend';
 import { getBotAction } from '../src/engine/botDraft';
-import { detectSynergies } from '../src/engine/synergyDetect';
 import { getChampionImageUrl } from '../src/components/ChampionCard';
 import { saveDraft, isFirebaseConfigured } from '../src/api/firebase';
 import championsData from '../src/data/champions.json';
@@ -191,16 +187,6 @@ export default function DraftScreen() {
     getBanSuggestions(allPickedOrBanned, player.masteries, 5, role),
     [allPickedOrBanned, player.masteries, role]);
 
-  const blueSynergies = useMemo(() =>
-    detectSynergies(draft.picks.blue.filter((id): id is string => id !== null), champions),
-    [draft.picks.blue]);
-  const redSynergies = useMemo(() =>
-    detectSynergies(draft.picks.red.filter((id): id is string => id !== null), champions),
-    [draft.picks.red]);
-  const enemyPickIds = useMemo(() =>
-    draft.picks.red.filter((id): id is string => id !== null),
-    [draft.picks.red]);
-
   const handleGetRecommendations = () => {
     const recs = getRecommendations(draft, player.masteries);
     setRecommendations(recs);
@@ -252,7 +238,7 @@ export default function DraftScreen() {
       {/* Practice mode banner */}
       {practiceMode && (
         <View className="bg-lol-purple/20 border-b border-lol-purple/40 px-4 py-1.5 flex-row items-center justify-center gap-3">
-          <Text className="text-xs font-semibold text-lol-purple">Practice Mode \u2014 vs Meta Bot</Text>
+          <Text className="text-xs font-semibold text-lol-purple">{'Practice Mode \u2014 vs Meta Bot'}</Text>
           {isBotTurn && <Text className="text-[10px] text-lol-text">Bot is thinking...</Text>}
         </View>
       )}
@@ -262,7 +248,7 @@ export default function DraftScreen() {
         <View className="flex-row items-center gap-2 flex-1 min-w-0">
           <Text className="text-lol-gold font-bold text-sm">DraftDiff</Text>
           <Text className="text-lol-text text-xs" numberOfLines={1}>
-            {player.summonerName} \u00B7 {role.toUpperCase()}
+            {player.summonerName} {'\u00B7'} {role.toUpperCase()}
           </Text>
         </View>
         <Timer seconds={timer.seconds} isActive={timer.isActive} />
@@ -272,7 +258,7 @@ export default function DraftScreen() {
             disabled={!canUndo || !!liveMode}
             className={`px-2 py-1 bg-lol-card border border-lol-border rounded ${(!canUndo || !!liveMode) ? 'opacity-30' : ''}`}
           >
-            <Text className="text-lol-text text-[10px]">\u21A9</Text>
+            <Text className="text-lol-text text-[10px]">{'\u21A9'}</Text>
           </Pressable>
           {draft.phase === 'complete' && (
             <Pressable onPress={() => setShowComplete(true)} className="px-2 py-1 bg-lol-gold rounded">
@@ -292,98 +278,88 @@ export default function DraftScreen() {
         </View>
       </View>
 
-      {/* Main Content — scrollable left panel + grid */}
-      <View className="flex-1 flex-row">
-        {/* Left panel */}
-        <ScrollView className="w-40 border-r border-lol-border" contentContainerClassName="p-2 gap-2">
-          <DraftBoard draft={draft} champions={champions} onRoleChange={setRole} />
+      {/* Draft Strip — compact pick/ban visualization */}
+      <CompactDraftStrip draft={draft} champions={champions} />
 
+      {/* Suggestion chips — horizontal scroll */}
+      {(weaknessCallout || banSuggestions.length > 0 || recommendations.length > 0) && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="px-3 py-1.5 gap-2 items-center"
+          className="border-b border-lol-border"
+          style={{ maxHeight: 40 }}
+        >
           {weaknessCallout && (
-            <View className="flex-row items-center gap-2 bg-lol-card border border-lol-gold/20 rounded-lg px-2 py-1.5">
-              <Text className="text-base">{weaknessCallout.icon}</Text>
-              <Text className={`text-[10px] font-semibold flex-1 ${weaknessCallout.color}`}>{weaknessCallout.text}</Text>
+            <View className="flex-row items-center gap-1 bg-lol-card border border-lol-gold/20 rounded-full px-2.5 py-1">
+              <Text className="text-xs">{weaknessCallout.icon}</Text>
+              <Text className={`text-[10px] font-semibold ${weaknessCallout.color}`} numberOfLines={1}>
+                {weaknessCallout.text}
+              </Text>
             </View>
           )}
-
-          {banSuggestions.length > 0 && (
-            <View className="bg-lol-card border border-lol-red/20 rounded-lg p-2">
-              <Text className="text-[10px] font-semibold text-lol-red uppercase tracking-wide mb-1">Suggested Bans</Text>
-              {banSuggestions.map((ban) => (
-                <Pressable
-                  key={ban.championId}
-                  onPress={() => banChampion(ban.championId, draft.currentTeam)}
-                  className="flex-row items-center gap-1.5 py-1 border-b border-lol-border/50"
-                >
+          {draft.currentAction === 'ban' && banSuggestions.map((ban) => (
+            <Pressable
+              key={ban.championId}
+              onPress={() => banChampion(ban.championId, draft.currentTeam)}
+              className="flex-row items-center gap-1.5 bg-lol-card border border-lol-red/30 rounded-full px-2 py-1"
+            >
+              <Image
+                source={{ uri: getChampionImageUrl(ban.ddragonId) }}
+                className="w-5 h-5 rounded-full"
+                resizeMode="cover"
+              />
+              <Text className="text-[10px] text-lol-text-bright font-medium">{ban.championName}</Text>
+            </Pressable>
+          ))}
+          {draft.currentAction === 'pick' && recommendations.map((rec) => {
+            const champ = champions.find((c) => c.id === rec.championId);
+            return (
+              <Pressable
+                key={rec.championId}
+                onPress={() => pickChampion(rec.championId, gridTeam)}
+                className="flex-row items-center gap-1.5 bg-lol-card border border-lol-green/30 rounded-full px-2 py-1"
+              >
+                {champ && (
                   <Image
-                    source={{ uri: getChampionImageUrl(ban.ddragonId) }}
-                    className="w-6 h-6 rounded"
+                    source={{ uri: getChampionImageUrl(champ.ddragonId) }}
+                    className="w-5 h-5 rounded-full"
                     resizeMode="cover"
                   />
-                  <View className="flex-1 min-w-0">
-                    <Text className="text-[10px] text-lol-text-bright font-medium">{ban.championName}</Text>
-                    <Text className="text-[8px] text-lol-text" numberOfLines={1}>{ban.reason}</Text>
-                  </View>
-                </Pressable>
-              ))}
-            </View>
-          )}
-
-          {draft.picks.blue.some(Boolean) && <CompAnalysisComponent analysis={blueAnalysis} team="blue" />}
-          {blueSynergies.length > 0 && <SynergyPanel synergies={blueSynergies} team="blue" />}
-          {draft.picks.red.some(Boolean) && <CompAnalysisComponent analysis={redAnalysis} team="red" />}
-          {redSynergies.length > 0 && <SynergyPanel synergies={redSynergies} team="red" />}
-          {enemyPickIds.length > 0 && recommendations.length > 0 && (
-            <MatchupIntel enemyPickIds={enemyPickIds} topRecommendation={recommendations[0]} allChampions={champions} />
-          )}
-
-          {recommendations.length > 0 && (
-            <View className="bg-lol-card border border-lol-border rounded-lg p-2">
-              <Text className="text-[10px] font-semibold text-lol-gold uppercase tracking-wide mb-1">Suggested Picks</Text>
-              {recommendations.map((rec, i) => {
-                const champ = champions.find((c) => c.id === rec.championId);
-                return (
-                  <Pressable
-                    key={rec.championId}
-                    onPress={() => gridMode === 'pick' && pickChampion(rec.championId, gridTeam)}
-                    className="flex-row items-center justify-between py-1 border-b border-lol-border/50"
-                  >
-                    <View className="flex-row items-center gap-1.5">
-                      <Text className="text-[10px] text-lol-gold font-bold w-4">#{i + 1}</Text>
-                      {champ && (
-                        <Image source={{ uri: getChampionImageUrl(champ.ddragonId) }} className="w-5 h-5 rounded" resizeMode="cover" />
-                      )}
-                      <Text className="text-[10px] text-lol-text-bright">{rec.championName}</Text>
-                    </View>
-                    <Text className="text-[10px] text-lol-green font-medium">{rec.winProbability.toFixed(1)}%</Text>
-                  </Pressable>
-                );
-              })}
-              <Pressable onPress={handleGetRecommendations} className="mt-1 py-1 rounded bg-lol-gold/20 border border-lol-gold/40 items-center">
-                <Text className="text-lol-gold text-[10px] font-semibold">Full Analysis \u2192</Text>
+                )}
+                <Text className="text-[10px] text-lol-text-bright font-medium">{rec.championName}</Text>
+                <Text className="text-[10px] text-lol-green font-bold">{rec.winProbability.toFixed(0)}%</Text>
               </Pressable>
-            </View>
+            );
+          })}
+          {recommendations.length > 0 && (
+            <Pressable onPress={handleGetRecommendations} className="flex-row items-center gap-1 bg-lol-gold/20 border border-lol-gold/40 rounded-full px-2.5 py-1">
+              <Text className="text-[10px] text-lol-gold font-semibold">{'Full Analysis \u2192'}</Text>
+            </Pressable>
           )}
         </ScrollView>
+      )}
 
-        {/* Right panel: champion grid */}
-        <View className={`flex-1 p-2 ${isGridDisabled ? 'opacity-50' : ''}`} pointerEvents={isGridDisabled ? 'none' : 'auto'}>
-          {isYourTurn && !liveMode && (
-            <View className="mb-2 flex-row items-center gap-2 bg-lol-gold/10 border border-lol-gold/40 rounded-md px-3 py-1.5">
-              <Text className="text-lol-gold text-xs font-bold uppercase tracking-widest">Your Turn!</Text>
-            </View>
-          )}
-          <ChampionGrid
-            onSelect={handleChampionSelect}
-            onChampionInfo={setDetailChampId}
-            disabledIds={allPickedOrBanned}
-            mode={gridMode}
-            currentTeam={gridTeam}
-            masteries={player.masteries}
-            playerRole={role}
-            playerTeam={playerTeam}
-            onModeChange={(practiceMode || liveMode) ? undefined : handleModeChange}
-          />
+      {/* Your turn banner */}
+      {isYourTurn && !liveMode && (
+        <View className="mx-3 mt-1.5 flex-row items-center gap-2 bg-lol-gold/10 border border-lol-gold/40 rounded-md px-3 py-1.5">
+          <Text className="text-lol-gold text-xs font-bold uppercase tracking-widest">Your Turn!</Text>
         </View>
+      )}
+
+      {/* Champion grid — full width */}
+      <View className={`flex-1 px-2 pt-1.5 ${isGridDisabled ? 'opacity-50' : ''}`} pointerEvents={isGridDisabled ? 'none' : 'auto'}>
+        <ChampionGrid
+          onSelect={handleChampionSelect}
+          onChampionInfo={setDetailChampId}
+          disabledIds={allPickedOrBanned}
+          mode={gridMode}
+          currentTeam={gridTeam}
+          masteries={player.masteries}
+          playerRole={role}
+          playerTeam={playerTeam}
+          onModeChange={(practiceMode || liveMode) ? undefined : handleModeChange}
+        />
       </View>
       {/* Modals */}
       {showPreDraft && banSuggestions.length > 0 && draft.phase !== 'complete' && (

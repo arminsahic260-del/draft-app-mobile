@@ -52,7 +52,7 @@ export default function ChampionCard({
   useEffect(() => setImgFailed(false), [champion.ddragonId]);
   const isSm = size === 'sm';
 
-  const tileSize = isSm ? 'w-8 h-8' : 'w-12 h-12';
+  const tileSize = isSm ? 'w-8 h-8' : 'w-full h-full';
 
   const fallbackBg =
     champion.damageType === 'AD'

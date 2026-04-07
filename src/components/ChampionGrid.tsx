@@ -2,7 +2,7 @@
 // Proprietary and confidential. See LICENSE for details.
 
 import { useState, useMemo, useEffect } from 'react';
-import { View, Text, TextInput, Pressable, FlatList } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, useWindowDimensions } from 'react-native';
 import type { Champion, Role, DamageType, PlayerMastery, Team, DraftAction } from '../types';
 import ChampionCard from './ChampionCard';
 import championsData from '../data/champions.json';
@@ -60,6 +60,10 @@ export default function ChampionGrid({
   const [search, setSearch]         = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>(playerRole ?? 'all');
   const [dmgFilter, setDmgFilter]   = useState<DmgFilter>('all');
+  const { width: screenWidth }      = useWindowDimensions();
+
+  const NUM_COLS = 5;
+  const itemSize = Math.floor((screenWidth - 32) / NUM_COLS); // 16px parent padding + 16px gaps
 
   const champions = championsData as Champion[];
 
@@ -93,22 +97,10 @@ export default function ChampionGrid({
       });
   }, [champions, search, roleFilter, dmgFilter, masteryMap]);
 
-  const isBanMode = mode === 'ban';
-  const headerColor = isBanMode ? 'text-lol-red' : currentTeam === 'blue' ? 'text-lol-blue' : 'text-lol-red';
-  const headerLabel = isBanMode
-    ? `Ban Phase \u2014 ${currentTeam === 'blue' ? 'Blue' : 'Red'} Side`
-    : `Pick Phase \u2014 ${currentTeam === 'blue' ? 'Blue' : 'Red'} Side`;
-
   return (
     <View className="flex-1 gap-2">
       {/* Header */}
       <View className="rounded-md border border-lol-border bg-lol-card px-3 py-2 gap-2">
-        <View className="flex-row items-center justify-between">
-          <Text className={`text-xs font-semibold tracking-wide uppercase ${headerColor}`}>
-            {headerLabel}
-          </Text>
-        </View>
-
         {/* Mode change buttons */}
         {onModeChange && (
           <View className="flex-row gap-1">
@@ -181,22 +173,24 @@ export default function ChampionGrid({
         <FlatList
           data={filtered}
           keyExtractor={(item) => item.id}
-          numColumns={6}
+          numColumns={NUM_COLS}
           contentContainerClassName="gap-1"
           columnWrapperClassName="gap-1"
           renderItem={({ item: champion }) => {
             const isDisabled = disabledIds.includes(champion.id);
             return (
-              <ChampionCard
-                champion={champion}
-                onPress={() => onSelect(champion.id)}
-                onLongPress={onChampionInfo ? () => onChampionInfo(champion.id) : undefined}
-                disabled={isDisabled}
-                banned={isDisabled && mode === 'ban'}
-                size="md"
-                mastery={masteryMap[champion.id]}
-                tier={getTier(champion.id)}
-              />
+              <View style={{ width: itemSize, height: itemSize }}>
+                <ChampionCard
+                  champion={champion}
+                  onPress={() => onSelect(champion.id)}
+                  onLongPress={onChampionInfo ? () => onChampionInfo(champion.id) : undefined}
+                  disabled={isDisabled}
+                  banned={isDisabled && mode === 'ban'}
+                  size="md"
+                  mastery={masteryMap[champion.id]}
+                  tier={getTier(champion.id)}
+                />
+              </View>
             );
           }}
         />
