@@ -2,7 +2,7 @@
 // Proprietary and confidential. See LICENSE for details.
 
 import { useState, useEffect } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, Image, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, Image, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAppContext } from '../src/context/AppContext';
@@ -14,14 +14,31 @@ import { fetchLcuStatus } from '../src/api/lcu';
 import { ENV } from '../src/config/env';
 import type { Role, LcuStatus } from '../src/types';
 
+const REGIONS = [
+  { label: 'EUW',  value: 'euw1' },
+  { label: 'EUNE', value: 'eun1' },
+  { label: 'NA',   value: 'na1'  },
+  { label: 'KR',   value: 'kr'   },
+  { label: 'BR',   value: 'br1'  },
+  { label: 'JP',   value: 'jp1'  },
+  { label: 'LAN',  value: 'la1'  },
+  { label: 'LAS',  value: 'la2'  },
+  { label: 'OCE',  value: 'oc1'  },
+  { label: 'TR',   value: 'tr1'  },
+  { label: 'RU',   value: 'ru'   },
+];
+
 export default function SetupScreen() {
   const { auth, setPlayer, setRole, setPracticeMode, setLiveMode, role } = useAppContext();
   const [name, setName] = useState('');
+  const [region, setRegion] = useState(ENV.RIOT_REGION || 'euw1');
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const { player, loading, error, lookupPlayer } = usePlayer();
   const [lcuStatus, setLcuStatus] = useState<LcuStatus | null>(null);
 
   const proxyConfigured = !!ENV.RIOT_PROXY_URL;
+  const API_BASE = ENV.API_BASE;
+  const regionLabel = REGIONS.find((r) => r.value === region)?.label ?? region.toUpperCase();
 
   // Poll LCU status
   useEffect(() => {
@@ -37,7 +54,7 @@ export default function SetupScreen() {
   }, [proxyConfigured]);
 
   const handleSearch = () => {
-    if (name.trim()) lookupPlayer(name.trim());
+    if (name.trim()) lookupPlayer(name.trim(), region);
   };
 
   const canStart = player !== null && selectedRole !== null;
@@ -113,12 +130,24 @@ export default function SetupScreen() {
                   </View>
                   <View className="items-end gap-1">
                     {auth.isPro && (
-                      <Pressable onPress={() => auth.user && redirectToPortal(auth.user.uid)}>
+                      <Pressable onPress={() => {
+                        if (API_BASE) {
+                          auth.user && redirectToPortal(auth.user.uid);
+                        } else {
+                          Alert.alert('Coming soon', 'Subscription management is not yet available.');
+                        }
+                      }}>
                         <Text className="text-[10px] text-lol-gold/70">Manage subscription</Text>
                       </Pressable>
                     )}
                     {!auth.isPro && auth.user?.email && (
-                      <Pressable onPress={() => redirectToCheckout(auth.user!.uid, auth.user!.email!)}>
+                      <Pressable onPress={() => {
+                        if (API_BASE) {
+                          redirectToCheckout(auth.user!.uid, auth.user!.email!);
+                        } else {
+                          Alert.alert('Coming soon', 'Pro upgrade is not yet available.');
+                        }
+                      }}>
                         <Text className="text-[10px] text-lol-gold font-semibold">Upgrade to Pro</Text>
                       </Pressable>
                     )}
@@ -151,9 +180,35 @@ export default function SetupScreen() {
                 <Text className="text-[9px] text-lol-text/40 italic">mock data mode</Text>
               )}
             </View>
+
+            {/* Region selector */}
+            <View className="gap-1.5">
+              <Text className="text-[10px] text-lol-text uppercase tracking-wide">Region</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-1.5">
+                {REGIONS.map((r) => (
+                  <Pressable
+                    key={r.value}
+                    onPress={() => setRegion(r.value)}
+                    className={`px-2.5 py-1 rounded ${
+                      region === r.value
+                        ? 'bg-lol-gold'
+                        : 'bg-lol-darker border border-lol-border'
+                    }`}
+                  >
+                    <Text className={`text-xs font-medium ${
+                      region === r.value ? 'text-lol-dark font-bold' : 'text-lol-text'
+                    }`}>
+                      {r.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Summoner name input */}
             <View className="flex-row gap-2">
               <TextInput
-                placeholder={proxyConfigured ? 'SummonerName#EUW' : 'Any name (demo mode)'}
+                placeholder={proxyConfigured ? `SummonerName#${regionLabel}` : 'Any name (demo mode)'}
                 placeholderTextColor="rgba(160,155,140,0.5)"
                 value={name}
                 onChangeText={setName}
@@ -241,22 +296,37 @@ export default function SetupScreen() {
           )}
 
           {/* Start Buttons */}
-          {canStart && (
+          {player && (
             <View className="gap-2">
+              {!selectedRole && (
+                <Text className="text-center text-xs text-lol-gold/70">
+                  {'\u2191'} Select your role to start
+                </Text>
+              )}
               <Pressable
                 onPress={handleStart}
-                className="w-full py-3 rounded-lg bg-lol-gold items-center"
+                disabled={!canStart}
+                className={`w-full py-3 rounded-lg items-center ${
+                  canStart ? 'bg-lol-gold' : 'bg-lol-gold/30'
+                }`}
               >
-                <Text className="text-lol-dark font-bold text-sm uppercase tracking-wider">
+                <Text className={`font-bold text-sm uppercase tracking-wider ${
+                  canStart ? 'text-lol-dark' : 'text-lol-dark/50'
+                }`}>
                   Start Draft
                 </Text>
               </Pressable>
 
               <Pressable
                 onPress={handlePractice}
-                className="w-full py-2 rounded-lg bg-lol-card border border-lol-purple/40 items-center flex-row justify-center gap-2"
+                disabled={!canStart}
+                className={`w-full py-2 rounded-lg bg-lol-card border items-center flex-row justify-center gap-2 ${
+                  canStart ? 'border-lol-purple/40' : 'border-lol-border'
+                }`}
               >
-                <Text className="text-lol-purple text-xs font-semibold">
+                <Text className={`text-xs font-semibold ${
+                  canStart ? 'text-lol-purple' : 'text-lol-purple/30'
+                }`}>
                   Practice vs Meta Bot
                 </Text>
               </Pressable>
@@ -264,16 +334,22 @@ export default function SetupScreen() {
               {proxyConfigured && (
                 <Pressable
                   onPress={handleLive}
-                  className="w-full py-2 rounded-lg bg-lol-card border border-emerald-500/40 items-center flex-row justify-center gap-2"
+                  disabled={!canStart}
+                  className={`w-full py-2 rounded-lg bg-lol-card border items-center flex-row justify-center gap-2 ${
+                    canStart ? 'border-emerald-500/40' : 'border-lol-border'
+                  }`}
                 >
                   <View className={`w-2 h-2 rounded-full ${
-                    lcuStatus?.inChampSelect ? 'bg-emerald-400'
+                    !canStart ? 'bg-lol-text/20'
+                    : lcuStatus?.inChampSelect ? 'bg-emerald-400'
                     : lcuStatus?.connected   ? 'bg-yellow-400'
                     : lcuStatus?.clientDetected ? 'bg-yellow-400/60'
                     : 'bg-lol-text/30'
                   }`} />
-                  <Text className="text-emerald-400 text-xs font-semibold">
-                    Live Mode — Connect to League Client
+                  <Text className={`text-xs font-semibold ${
+                    canStart ? 'text-emerald-400' : 'text-emerald-400/30'
+                  }`}>
+                    Live Mode
                   </Text>
                 </Pressable>
               )}
