@@ -43,7 +43,7 @@ function ScoreBadge({ score, team }: { score: number; team: 'blue' | 'red' }) {
 
 function MiniPortraits({ picks }: { picks: (string | null)[] }) {
   const ids = picks.filter((id): id is string => id !== null);
-  if (ids.length === 0) return <Text className="text-[10px] text-lol-text/40 italic">\u2014</Text>;
+  if (ids.length === 0) return <Text className="text-[10px] text-lol-text/40 italic">{'\u2014'}</Text>;
   return (
     <View className="flex-row gap-0.5 flex-wrap">
       {ids.map((id) => {
@@ -136,7 +136,7 @@ export default function HistoryScreen() {
       {/* Header */}
       <View className="bg-lol-darker border-b border-lol-border px-4 py-3 flex-row items-center gap-3">
         <Pressable onPress={() => router.back()}>
-          <Text className="text-lol-text text-sm">\u2190 Back</Text>
+          <Text className="text-lol-text text-sm">{'\u2190'} Back</Text>
         </Pressable>
         <Text className="text-lol-gold font-bold text-base flex-1">Draft History</Text>
         {source === 'cloud' && (

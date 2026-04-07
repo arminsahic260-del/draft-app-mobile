@@ -155,7 +155,7 @@ export default function ResultsScreen() {
       {/* Top Bar */}
       <View className="bg-lol-darker border-b border-lol-border px-3 py-2 flex-row items-center justify-between">
         <Pressable onPress={() => router.back()} className="flex-row items-center gap-1">
-          <Text className="text-lol-text text-sm">\u2190</Text>
+          <Text className="text-lol-text text-sm">{'\u2190'}</Text>
           <Text className="text-lol-text text-sm">Back</Text>
         </Pressable>
         <Text className="text-lol-gold font-bold text-sm tracking-wide uppercase">Analysis</Text>
