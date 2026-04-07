@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Armin Sahic. All rights reserved.
 // Proprietary and confidential. See LICENSE for details.
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Image, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -10,9 +10,8 @@ import { usePlayer } from '../src/hooks/usePlayer';
 import RolePicker from '../src/components/RolePicker';
 import { isFirebaseConfigured, FREE_DRAFT_LIMIT } from '../src/api/firebase';
 import { redirectToCheckout, redirectToPortal } from '../src/api/stripe';
-import { fetchLcuStatus } from '../src/api/lcu';
 import { ENV } from '../src/config/env';
-import type { Role, LcuStatus } from '../src/types';
+import type { Role } from '../src/types';
 
 const REGIONS = [
   { label: 'EUW',  value: 'euw1' },
@@ -29,29 +28,15 @@ const REGIONS = [
 ];
 
 export default function SetupScreen() {
-  const { auth, setPlayer, setRole, setPracticeMode, setLiveMode, role } = useAppContext();
+  const { auth, setPlayer, setRole, setPracticeMode, role } = useAppContext();
   const [name, setName] = useState('');
   const [region, setRegion] = useState(ENV.RIOT_REGION || 'euw1');
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const { player, loading, error, lookupPlayer } = usePlayer();
-  const [lcuStatus, setLcuStatus] = useState<LcuStatus | null>(null);
 
   const proxyConfigured = !!ENV.RIOT_PROXY_URL;
   const API_BASE = ENV.API_BASE;
   const regionLabel = REGIONS.find((r) => r.value === region)?.label ?? region.toUpperCase();
-
-  // Poll LCU status
-  useEffect(() => {
-    if (!proxyConfigured) return;
-    let cancelled = false;
-    const poll = async () => {
-      const status = await fetchLcuStatus();
-      if (!cancelled) setLcuStatus(status);
-    };
-    poll();
-    const id = setInterval(poll, 3000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [proxyConfigured]);
 
   const handleSearch = () => {
     if (name.trim()) lookupPlayer(name.trim(), region);
@@ -74,15 +59,6 @@ export default function SetupScreen() {
     setRole(selectedRole!);
     setPracticeMode(true);
     setLiveMode(false);
-    router.push('/draft');
-  };
-
-  const handleLive = () => {
-    if (!canStart) return;
-    setPlayer(player);
-    setRole(selectedRole!);
-    setPracticeMode(false);
-    setLiveMode(true);
     router.push('/draft');
   };
 
@@ -331,28 +307,6 @@ export default function SetupScreen() {
                 </Text>
               </Pressable>
 
-              {proxyConfigured && (
-                <Pressable
-                  onPress={handleLive}
-                  disabled={!canStart}
-                  className={`w-full py-2 rounded-lg bg-lol-card border items-center flex-row justify-center gap-2 ${
-                    canStart ? 'border-emerald-500/40' : 'border-lol-border'
-                  }`}
-                >
-                  <View className={`w-2 h-2 rounded-full ${
-                    !canStart ? 'bg-lol-text/20'
-                    : lcuStatus?.inChampSelect ? 'bg-emerald-400'
-                    : lcuStatus?.connected   ? 'bg-yellow-400'
-                    : lcuStatus?.clientDetected ? 'bg-yellow-400/60'
-                    : 'bg-lol-text/30'
-                  }`} />
-                  <Text className={`text-xs font-semibold ${
-                    canStart ? 'text-emerald-400' : 'text-emerald-400/30'
-                  }`}>
-                    Live Mode
-                  </Text>
-                </Pressable>
-              )}
             </View>
           )}
 
