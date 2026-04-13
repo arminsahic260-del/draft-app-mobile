@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppProvider } from '../src/context/AppContext';
 import { useAuth } from '../src/hooks/useAuth';
 import { configureGoogleSignIn, isFirebaseConfigured } from '../src/api/firebase';
+import { requestPermissions, scheduleDailyReset, cancelDailyReset } from '../src/utils/notifications';
 import ErrorBoundary from '../src/components/ErrorBoundary';
 
 export default function RootLayout() {
@@ -20,6 +21,20 @@ export default function RootLayout() {
   }, []);
 
   const auth = useAuth();
+
+  // Schedule or cancel daily reset notification based on Pro status.
+  useEffect(() => {
+    if (auth.loading) return;
+    (async () => {
+      if (auth.user && !auth.isPro) {
+        const granted = await requestPermissions();
+        if (granted) await scheduleDailyReset();
+      } else {
+        // Pro users or signed-out users don't need the reminder.
+        await cancelDailyReset();
+      }
+    })();
+  }, [auth.loading, auth.user, auth.isPro]);
 
   if (auth.loading) {
     return (

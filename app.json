@@ -39,7 +39,14 @@
     "plugins": [
       "expo-router",
       "@react-native-google-signin/google-signin",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#c89b3c"
+        }
+      ]
     ],
     "extra": {
       "eas": {
