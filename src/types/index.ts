@@ -28,6 +28,10 @@ export interface PlayerMastery {
 export interface PlayerProfile {
   summonerName: string;
   tagLine: string;
+  /** Riot PUUID — used to correlate drafts with post-game match results. */
+  puuid?: string;
+  /** Platform region (e.g. "euw1") — same scope as the summoner lookup. */
+  region?: string;
   tier: string;
   division: string;
   lp: number;
@@ -113,6 +117,28 @@ export interface LcuStatus {
 
 export type AppScreen = 'setup' | 'draft' | 'recommendations' | 'history' | 'terms';
 
+export interface DraftMatchResult {
+  matchId: string;
+  won: boolean;
+  championId: string | null;
+  championName: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  cs: number;
+  damage: number;
+  gold: number;
+  durationSec: number;
+  gameEndMs: number;
+  queueId: number | null;
+  reviewedAt: string;
+}
+
+export type DraftReviewStatus =
+  | { kind: 'pending' }
+  | { kind: 'reviewed'; result: DraftMatchResult }
+  | { kind: 'no-match'; reason: string; checkedAt: string };
+
 export interface LocalDraftRecord {
   id: string;
   createdAt: string;
@@ -122,6 +148,13 @@ export interface LocalDraftRecord {
   topRecommendation?: string;
   blueScore: number;
   redScore: number;
+  summoner?: {
+    puuid: string;
+    region: string;
+    name: string;
+    tag: string;
+  };
+  review?: DraftReviewStatus;
 }
 
 export interface AuthUser {

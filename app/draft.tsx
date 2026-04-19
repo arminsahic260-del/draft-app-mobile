@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAppContext } from '../src/context/AppContext';
 import { useDraft } from '../src/hooks/useDraft';
-import { useLiveDraft } from '../src/hooks/useLiveDraft';
+import { useRemoteLiveDraft } from '../src/hooks/useRemoteLiveDraft';
 import { useTimer } from '../src/hooks/useTimer';
 import ChampionGrid from '../src/components/ChampionGrid';
 import CompactDraftStrip from '../src/components/CompactDraftStrip';
@@ -57,12 +57,13 @@ export default function DraftScreen() {
     useDraft(role, playerTeam);
   const timer = useTimer(30);
 
-  // Live mode
+  // Live mode — remote (Firestore relay from PC connector)
   const handleLiveEvent = useCallback((event: LiveDraftEvent) => {
     syncLive(event);
   }, [syncLive]);
   const handleSessionEnd = useCallback((_reason: string) => {}, []);
-  const { status: liveStatus } = useLiveDraft({
+  const { status: liveStatus } = useRemoteLiveDraft({
+    uid: auth.user?.uid,
     onEvent: handleLiveEvent,
     onSessionEnd: handleSessionEnd,
     enabled: !!liveMode,
@@ -110,45 +111,6 @@ export default function DraftScreen() {
     return () => clearTimeout(t);
   }, [draft.currentTeam, draft.currentAction, draft.phase, practiceMode, banChampion, pickChampion]);
 
-  // Auto-save to AsyncStorage + Firestore
-  useEffect(() => {
-    if (draft.phase !== 'complete') return;
-    const blueIds = draft.picks.blue.filter((id): id is string => id !== null);
-    const redIds  = draft.picks.red.filter((id): id is string => id !== null);
-    if (blueIds.length === 0 && redIds.length === 0) return;
-    const blueA = analyzeComp(blueIds, champions);
-    const redA  = analyzeComp(redIds,  champions);
-    const record: LocalDraftRecord = {
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-      playerRole: role,
-      picks: draft.picks,
-      bans: draft.bans,
-      blueScore: draftScore(blueA),
-      redScore:  draftScore(redA),
-    };
-    // AsyncStorage (local)
-    AsyncStorage.getItem('draft-history').then((raw) => {
-      const existing: LocalDraftRecord[] = JSON.parse(raw ?? '[]');
-      const last = existing[0];
-      if (!last || Math.abs(Number(record.id) - Number(last.id)) > 5000) {
-        existing.unshift(record);
-        AsyncStorage.setItem('draft-history', JSON.stringify(existing.slice(0, 50)));
-      }
-    }).catch(() => {});
-    // Firestore (cloud)
-    if (isFirebaseConfigured && auth.user?.uid) {
-      saveDraft({
-        uid: auth.user.uid,
-        createdAt: new Date().toISOString(),
-        playerRole: role,
-        picks: draft.picks,
-        bans: draft.bans,
-        topRecommendation: recommendations[0]?.championId,
-      }).catch(() => {});
-    }
-  }, [draft.phase]);
-
   const handlePreDraftBan = (championId: string) => {
     banChampion(championId, 'blue');
   };
@@ -183,6 +145,52 @@ export default function DraftScreen() {
     return total >= 2 ? getRecommendations(draft, player.masteries) : [];
   }, [draft, player.masteries]);
 
+  // Auto-save to AsyncStorage + Firestore on draft completion
+  useEffect(() => {
+    if (draft.phase !== 'complete') return;
+    const blueIds = draft.picks.blue.filter((id): id is string => id !== null);
+    const redIds  = draft.picks.red.filter((id): id is string => id !== null);
+    if (blueIds.length === 0 && redIds.length === 0) return;
+    const blueA = analyzeComp(blueIds, champions);
+    const redA  = analyzeComp(redIds,  champions);
+    const record: LocalDraftRecord = {
+      id: Date.now().toString(),
+      createdAt: new Date().toISOString(),
+      playerRole: role,
+      picks: draft.picks,
+      bans: draft.bans,
+      blueScore: draftScore(blueA),
+      redScore:  draftScore(redA),
+      summoner:  player.puuid && player.region ? {
+        puuid:  player.puuid,
+        region: player.region,
+        name:   player.summonerName,
+        tag:    player.tagLine,
+      } : undefined,
+      review:    player.puuid ? { kind: 'pending' } : undefined,
+    };
+    // AsyncStorage (local)
+    AsyncStorage.getItem('draft-history').then((raw) => {
+      const existing: LocalDraftRecord[] = JSON.parse(raw ?? '[]');
+      const last = existing[0];
+      if (!last || Math.abs(Number(record.id) - Number(last.id)) > 5000) {
+        existing.unshift(record);
+        AsyncStorage.setItem('draft-history', JSON.stringify(existing.slice(0, 50)));
+      }
+    }).catch(() => {});
+    // Firestore (cloud)
+    if (isFirebaseConfigured && auth.user?.uid) {
+      saveDraft({
+        uid: auth.user.uid,
+        createdAt: new Date().toISOString(),
+        playerRole: role,
+        picks: draft.picks,
+        bans: draft.bans,
+        topRecommendation: recommendations[0]?.championId,
+      }).catch(() => {});
+    }
+  }, [draft.phase, role, auth.user?.uid, recommendations]);
+
   const banSuggestions = useMemo(() =>
     getBanSuggestions(allPickedOrBanned, player.masteries, 5, role),
     [allPickedOrBanned, player.masteries, role]);
@@ -213,12 +221,12 @@ export default function DraftScreen() {
   }, [redAnalysis, blueAnalysis, enemyPickCount]);
 
   const liveStatusLabel =
-    liveStatus === 'active'    ? 'Champion select active'
-    : liveStatus === 'waiting' ? 'Waiting for champion select...'
-    : liveStatus === 'connected' ? 'League client detected'
-    : liveStatus === 'ended'   ? 'Champion select ended'
-    : liveStatus === 'error'   ? 'Connection lost \u2014 reconnecting...'
-    : 'Connecting to proxy...';
+    liveStatus === 'active'   ? 'Live from PC'
+    : liveStatus === 'waiting' ? 'Waiting for PC connector...'
+    : liveStatus === 'stale'  ? 'Connector stopped updating \u2014 is it still running?'
+    : liveStatus === 'ended'  ? 'Champion select ended'
+    : liveStatus === 'error'  ? 'Connection error \u2014 check sign-in'
+    : 'Idle';
 
   return (
     <SafeAreaView className="flex-1 bg-lol-dark">

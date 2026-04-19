@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Armin Sahic. All rights reserved.
 // GET /api/summoner?name=...&tag=...&region=euw1
-// Lightweight Riot API proxy for Vercel serverless (no match history).
+// Lightweight Riot API proxy for Vercel serverless.
+
+import { checkRateLimit } from './_ratelimit.js';
 
 const REGIONAL = {
   na1: 'americas', br1: 'americas', la1: 'americas', la2: 'americas',
@@ -52,27 +54,31 @@ async function riotFetch(host, path, apiKey) {
   return res.json();
 }
 
+// Batch match-v5 lookups so a single user can't consume the entire 20 req/s
+// dev-key budget.
+const MATCH_FETCH_CONCURRENCY = 4;
+
 async function fetchChampStats(cluster, puuid, matchIds, idMap, apiKey) {
   if (!matchIds.length) return {};
 
-  const results = await Promise.allSettled(
-    matchIds.map((id) =>
-      riotFetch(cluster, `/lol/match/v5/matches/${id}`, apiKey),
-    ),
-  );
-
   const stats = {};
-  for (const result of results) {
-    if (result.status !== 'fulfilled') continue;
-    const participant = result.value.info?.participants?.find(
-      (p) => p.puuid === puuid,
+  for (let i = 0; i < matchIds.length; i += MATCH_FETCH_CONCURRENCY) {
+    const batch = matchIds.slice(i, i + MATCH_FETCH_CONCURRENCY);
+    const results = await Promise.allSettled(
+      batch.map((id) => riotFetch(cluster, `/lol/match/v5/matches/${id}`, apiKey)),
     );
-    if (!participant) continue;
-    const champId = idMap[participant.championId];
-    if (!champId) continue;
-    if (!stats[champId]) stats[champId] = { wins: 0, games: 0 };
-    stats[champId].games++;
-    if (participant.win) stats[champId].wins++;
+    for (const result of results) {
+      if (result.status !== 'fulfilled') continue;
+      const participant = result.value.info?.participants?.find(
+        (p) => p.puuid === puuid,
+      );
+      if (!participant) continue;
+      const champId = idMap[participant.championId];
+      if (!champId) continue;
+      if (!stats[champId]) stats[champId] = { wins: 0, games: 0 };
+      stats[champId].games++;
+      if (participant.win) stats[champId].wins++;
+    }
   }
   return stats;
 }
@@ -89,6 +95,14 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
+  // Per-IP rate limit: 10 lookups burst, refill 1 every 6s (= 10/min).
+  // Protects the Riot dev key (20 req/s global) from a single hot client.
+  const limit = checkRateLimit(req, { bucket: 'summoner', capacity: 10, refillSeconds: 6 });
+  if (!limit.allowed) {
+    res.setHeader('Retry-After', Math.ceil(limit.retryAfter));
+    return res.status(429).json({ error: 'Too many lookups — try again in a moment.' });
+  }
+
   const apiKey = process.env.RIOT_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'RIOT_API_KEY not configured on server' });
 
@@ -96,31 +110,36 @@ export default async function handler(req, res) {
   const region = (rawRegion || 'euw1').toLowerCase();
 
   if (!name || !tag) return res.status(400).json({ error: 'name and tag query params are required' });
+  if (!REGIONAL[region]) {
+    return res.status(400).json({ error: `Unsupported region: ${rawRegion}` });
+  }
 
-  const cluster = REGIONAL[region] ?? 'europe';
+  const cluster = REGIONAL[region];
 
   try {
-    // Step 1 — PUUID from Riot ID
     const account = await riotFetch(
       cluster,
       `/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`,
       apiKey,
     );
 
-    // Step 2 — Ranked stats, mastery, DDragon map, and recent match IDs in parallel
     const [ranked, masteries, idMap, matchIds] = await Promise.all([
       riotFetch(region, `/lol/league/v4/entries/by-puuid/${account.puuid}`, apiKey),
       riotFetch(region, `/lol/champion-mastery/v4/champion-masteries/by-puuid/${account.puuid}/top?count=25`, apiKey),
       getChampIdMap(),
-      riotFetch(cluster, `/lol/match/v5/matches/by-puuid/${account.puuid}/ids?type=ranked&start=0&count=15`, apiKey)
+      riotFetch(cluster, `/lol/match/v5/matches/by-puuid/${account.puuid}/ids?type=ranked&start=0&count=10`, apiKey)
         .catch(() => []),
     ]);
 
-    // Step 3 — Fetch match details (with 5s safety timeout)
-    const champStats = await Promise.race([
+    // 5s safety timeout. If we lose the race, signal statsPartial so the
+    // client can distinguish "new user" from "we timed out".
+    const TIMEOUT_SENTINEL = Symbol('timeout');
+    const raced = await Promise.race([
       fetchChampStats(cluster, account.puuid, matchIds, idMap, apiKey),
-      new Promise((resolve) => setTimeout(() => resolve({}), 5000)),
+      new Promise((resolve) => setTimeout(() => resolve(TIMEOUT_SENTINEL), 5000)),
     ]);
+    const timedOut = raced === TIMEOUT_SENTINEL;
+    const champStats = timedOut ? {} : raced;
 
     const solo = ranked.find((e) => e.queueType === 'RANKED_SOLO_5x5') ?? {
       tier: 'UNRANKED', rank: '', leaguePoints: 0, wins: 0, losses: 0,
@@ -145,12 +164,15 @@ export default async function handler(req, res) {
     return res.status(200).json({
       summonerName: account.gameName,
       tagLine:      account.tagLine,
+      puuid:        account.puuid,
+      region,
       tier:         solo.tier === 'UNRANKED' ? 'Unranked' : cap(solo.tier),
       division:     solo.rank,
       lp:           solo.leaguePoints,
       wins:         solo.wins,
       losses:       solo.losses,
       masteries:    mappedMasteries,
+      statsPartial: timedOut,
     });
   } catch (err) {
     return res.status(err.status ?? 500).json({ error: err.message });
