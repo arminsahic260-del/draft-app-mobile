@@ -64,6 +64,9 @@
       "riotRegion": "eun1",
       "apiBase": "https://draft-app-mobile.vercel.app"
     },
-    "owner": "imglobal"
+    "owner": "imglobal",
+    "updates": {
+      "url": "https://u.expo.dev/9c0b4ae9-9f99-40af-a2d4-bde0d11823aa"
+    }
   }
 }

@@ -46,3 +46,5 @@ google-services-key.json
 /android
 app-preview.apk
 *.apk
+
+.vercel

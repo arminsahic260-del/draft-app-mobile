@@ -1,15 +1,12 @@
 // Copyright (c) 2026 Armin Sahic. All rights reserved.
 // Proprietary and confidential. See LICENSE for details.
+//
+// Thin client for /api/claude-explain. The Anthropic key lives on the server;
+// we only send structured draft context and a Firebase ID token.
 
 import type { Champion, DraftState, PlayerMastery, Recommendation } from '../types';
 import { ENV } from '../config/env';
-
-const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-haiku-4-5-20251001';
-
-function getApiKey(): string | null {
-  return ENV.CLAUDE_API_KEY || null;
-}
+import { getFirebaseAuth } from './firebase';
 
 export async function getPickExplanation(
   recommendation: Recommendation,
@@ -17,57 +14,59 @@ export async function getPickExplanation(
   mastery: PlayerMastery | undefined,
   allChampions: Champion[],
 ): Promise<string> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    return 'Configure CLAUDE_API_KEY in app config to enable AI explanations.';
+  if (!ENV.API_BASE) {
+    return 'API_BASE is not configured.';
+  }
+  const user = getFirebaseAuth().currentUser;
+  if (!user) {
+    return 'Sign in to get AI explanations.';
   }
 
+  const nameOf = (id: string | null) =>
+    id ? (allChampions.find((c) => c.id === id)?.name ?? id) : null;
+
   const enemyTeam = draft.playerTeam === 'blue' ? 'red' : 'blue';
-  const enemyPicks = draft.picks[enemyTeam]
-    .filter((id): id is string => id !== null)
-    .map((id) => allChampions.find((c) => c.id === id)?.name ?? id);
-
   const allyPicks = draft.picks[draft.playerTeam]
-    .filter((id): id is string => id !== null)
-    .map((id) => allChampions.find((c) => c.id === id)?.name ?? id);
-
+    .map(nameOf)
+    .filter((n): n is string => !!n);
+  const enemyPicks = draft.picks[enemyTeam]
+    .map(nameOf)
+    .filter((n): n is string => !!n);
   const bans = [...draft.bans.blue, ...draft.bans.red]
-    .filter((id): id is string => id !== null)
-    .map((id) => allChampions.find((c) => c.id === id)?.name ?? id);
-
-  const prompt = `You are a League of Legends draft coach. Explain in 2-3 concise sentences why ${recommendation.championName} is a strong pick in this specific draft situation.
-
-Draft context:
-- Player role: ${draft.playerRole}
-- Ally picks so far: ${allyPicks.length ? allyPicks.join(', ') : 'none yet'}
-- Enemy picks: ${enemyPicks.length ? enemyPicks.join(', ') : 'none yet'}
-- Banned: ${bans.length ? bans.join(', ') : 'none'}
-${mastery ? `- Player has ${mastery.gamesPlayed} games on this champion at ${mastery.winRate}% win rate` : ''}
-
-Focus on: win condition, synergies with allies, counters to enemies, or power spike. Be specific, not generic.`;
+    .map(nameOf)
+    .filter((n): n is string => !!n);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+
   try {
-    const response = await fetch(CLAUDE_API_URL, {
+    const token = await user.getIdToken();
+    const res = await fetch(`${ENV.API_BASE}/api/claude-explain`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 150,
-        messages: [{ role: 'user', content: prompt }],
+        championName: recommendation.championName,
+        playerRole: draft.playerRole,
+        allyPicks,
+        enemyPicks,
+        bans,
+        mastery: mastery
+          ? { gamesPlayed: mastery.gamesPlayed, winRate: mastery.winRate }
+          : undefined,
       }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
 
-    if (!response.ok) throw new Error(`Claude API error: ${response.status}`);
-    const data = await response.json();
-    return data.content?.[0]?.text ?? 'No explanation available.';
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: res.statusText }));
+      return data.error ?? 'Could not load AI explanation.';
+    }
+    const data = await res.json();
+    return data.explanation ?? 'No explanation available.';
   } catch (err) {
     clearTimeout(timeout);
     if (err instanceof Error && err.name === 'AbortError') {

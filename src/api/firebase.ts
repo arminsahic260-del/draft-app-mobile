@@ -2,11 +2,9 @@
 // Proprietary and confidential. See LICENSE for details.
 
 import { initializeApp, type FirebaseApp } from 'firebase/app';
-// @ts-ignore - getReactNativePersistence is re-exported from firebase/auth/react-native
 import {
   initializeAuth,
   getAuth,
-  getReactNativePersistence,
   GoogleAuthProvider,
   signInWithCredential,
   signOut as firebaseSignOut,
@@ -14,6 +12,10 @@ import {
   type Auth,
   type User,
 } from 'firebase/auth';
+// getReactNativePersistence is exported at runtime but not declared in the
+// v12 type surface. The @ts-ignore has to sit directly above the import.
+// @ts-ignore
+import { getReactNativePersistence } from 'firebase/auth';
 import {
   getFirestore,
   doc,

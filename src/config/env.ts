@@ -12,7 +12,6 @@ const extra = Constants.expoConfig?.extra ?? {};
 export const ENV = {
   RIOT_PROXY_URL: (extra.riotProxyUrl as string) ?? '',
   RIOT_REGION:    (extra.riotRegion as string) ?? 'euw1',
-  CLAUDE_API_KEY: (extra.claudeApiKey as string) ?? '',
   API_BASE:       (extra.apiBase as string) ?? '',
 
   // Firebase

@@ -3,19 +3,9 @@
 // Handles Stripe webhook events to sync subscription state with Firestore.
 
 import Stripe from 'stripe';
-import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getDb } from './_firebase.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-// Initialise Firebase Admin once across warm invocations.
-function getDb() {
-  if (!getApps().length) {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    initializeApp({ credential: cert(serviceAccount) });
-  }
-  return getFirestore();
-}
 
 // Read raw body for Stripe signature verification.
 function buffer(readable) {
@@ -27,19 +17,17 @@ function buffer(readable) {
   });
 }
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Stripe-Signature');
+// Subscription statuses that should revoke Pro access.
+// past_due = Stripe is still retrying payment; do NOT revoke on that.
+const REVOKE_STATUSES = new Set(['canceled', 'unpaid', 'incomplete_expired']);
 
-  if (req.method === 'OPTIONS') return res.status(204).end();
+export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET || !process.env.FIREBASE_SERVICE_ACCOUNT) {
     return res.status(500).json({ error: 'Server env vars not configured' });
   }
 
-  // Verify Stripe signature against raw body.
   const rawBody = await buffer(req);
   const sig = req.headers['stripe-signature'];
 
@@ -53,55 +41,95 @@ export default async function handler(req, res) {
 
   const db = getDb();
 
-  try {
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object;
-      const uid = session.client_reference_id;
-      const stripeCustomerId = session.customer;
+  // Idempotency: ack immediately if we've already processed this event.id.
+  // Otherwise run the handler; only mark the event processed AFTER success,
+  // so a crashed handler leaves the event retryable by Stripe.
+  const eventRef = db.collection('stripeWebhookEvents').doc(event.id);
+  const existing = await eventRef.get();
+  if (existing.exists) {
+    return res.status(200).json({ received: true, duplicate: true });
+  }
 
+  try {
+    await processEvent(db, event);
+  } catch (err) {
+    console.error(`Webhook handler failed for event ${event.id}:`, err);
+    return res.status(500).json({ error: 'Handler failed; will retry' });
+  }
+
+  await eventRef.set({
+    type: event.type,
+    processedAt: new Date().toISOString(),
+  });
+
+  return res.status(200).json({ received: true });
+}
+
+async function processEvent(db, event) {
+  switch (event.type) {
+    case 'checkout.session.completed': {
+      const session = event.data.object;
+      const uid = session.client_reference_id
+        || session.metadata?.firebaseUid
+        || session.metadata?.firebaseUID;
+      const stripeCustomerId = session.customer;
       if (!uid) {
-        console.error('checkout.session.completed missing client_reference_id');
-        return res.status(400).json({ error: 'Missing client_reference_id' });
+        console.error('checkout.session.completed missing firebase uid');
+        break;
       }
 
-      // Tag the Stripe customer with the Firebase UID for portal lookups.
+      // Back-fill metadata so subsequent events (and portal lookups) can find
+      // the uid by both casings.
       await stripe.customers.update(stripeCustomerId, {
-        metadata: { firebaseUID: uid },
+        metadata: { firebaseUid: uid, firebaseUID: uid },
       });
 
       await db.collection('users').doc(uid).set(
         { isPro: true, stripeCustomerId },
         { merge: true },
       );
-
       console.log(`User ${uid} upgraded to Pro`);
+      break;
     }
 
-    if (event.type === 'customer.subscription.deleted') {
-      const subscription = event.data.object;
-      const stripeCustomerId = subscription.customer;
-
-      // Find the user doc by stripeCustomerId.
-      const snapshot = await db
-        .collection('users')
-        .where('stripeCustomerId', '==', stripeCustomerId)
-        .limit(1)
-        .get();
-
-      if (!snapshot.empty) {
-        const userDoc = snapshot.docs[0];
-        await userDoc.ref.set({ isPro: false }, { merge: true });
-        console.log(`User ${userDoc.id} downgraded from Pro`);
-      } else {
-        console.warn(`No user found for stripeCustomerId ${stripeCustomerId}`);
+    case 'invoice.paid': {
+      const invoice = event.data.object;
+      const uid = await findUidByCustomer(db, invoice.customer);
+      if (uid) {
+        await db.collection('users').doc(uid).set({ isPro: true }, { merge: true });
       }
+      break;
     }
 
-    return res.status(200).json({ received: true });
-  } catch (err) {
-    console.error('Webhook handler error:', err);
-    return res.status(500).json({ error: err.message });
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted': {
+      const sub = event.data.object;
+      const uid = sub.metadata?.firebaseUid
+        || sub.metadata?.firebaseUID
+        || await findUidByCustomer(db, sub.customer);
+      if (!uid) break;
+
+      if (REVOKE_STATUSES.has(sub.status) || event.type === 'customer.subscription.deleted') {
+        await db.collection('users').doc(uid).set({ isPro: false }, { merge: true });
+        console.log(`User ${uid} downgraded (status=${sub.status})`);
+      } else if (sub.status === 'active' || sub.status === 'trialing') {
+        await db.collection('users').doc(uid).set({ isPro: true }, { merge: true });
+      }
+      // past_due / incomplete: leave isPro untouched.
+      break;
+    }
+    // invoice.payment_failed intentionally not handled — Stripe retries for
+    // ~3 weeks; revoking on the first failure punishes transient card issues.
   }
+}
+
+async function findUidByCustomer(db, customerId) {
+  const snap = await db
+    .collection('users')
+    .where('stripeCustomerId', '==', customerId)
+    .limit(1)
+    .get();
+  return snap.empty ? null : snap.docs[0].id;
 }
 
 // Disable Vercel body parsing so we can read the raw body for signature verification.
