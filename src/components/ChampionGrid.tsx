@@ -6,7 +6,7 @@ import { View, Text, TextInput, Pressable, FlatList, useWindowDimensions } from 
 import type { Champion, Role, DamageType, PlayerMastery, Team, DraftAction } from '../types';
 import ChampionCard from './ChampionCard';
 import championsData from '../data/champions.json';
-import tierlistData from '../data/tierlist.json';
+import { usePatch } from '../hooks/PatchDataContext';
 
 type RoleFilter = 'all' | Role;
 type DmgFilter  = 'all' | DamageType;
@@ -27,8 +27,7 @@ const DMG_FILTERS: { label: string; value: DmgFilter; active: string; inactive: 
   { label: 'Mix',   value: 'mixed', active: 'bg-lol-purple text-white border-lol-purple',   inactive: 'border-lol-purple/40 text-lol-purple' },
 ];
 
-const tierlist = tierlistData as Record<string, string[]>;
-function getTier(id: string): string | undefined {
+function getTier(id: string, tierlist: Record<string, string[]>): string | undefined {
   for (const [tier, ids] of Object.entries(tierlist)) {
     if (ids.includes(id)) return tier;
   }
@@ -61,6 +60,8 @@ export default function ChampionGrid({
   const [roleFilter, setRoleFilter] = useState<RoleFilter>(playerRole ?? 'all');
   const [dmgFilter, setDmgFilter]   = useState<DmgFilter>('all');
   const { width: screenWidth }      = useWindowDimensions();
+  const { data: patch } = usePatch();
+  const tierlist = patch.tierlist;
 
   const NUM_COLS = 5;
   const itemSize = Math.floor((screenWidth - 32) / NUM_COLS); // 16px parent padding + 16px gaps
@@ -91,11 +92,11 @@ export default function ChampionGrid({
         const mB = masteryMap[b.id]?.gamesPlayed ?? 0;
         if (mA !== mB) return mB - mA;
         const tScore: Record<string, number> = { S: 4, A: 3, B: 2, C: 1 };
-        const tA = tScore[getTier(a.id) ?? 'C'] ?? 0;
-        const tB = tScore[getTier(b.id) ?? 'C'] ?? 0;
+        const tA = tScore[getTier(a.id, tierlist) ?? 'C'] ?? 0;
+        const tB = tScore[getTier(b.id, tierlist) ?? 'C'] ?? 0;
         return tB - tA;
       });
-  }, [champions, search, roleFilter, dmgFilter, masteryMap]);
+  }, [champions, search, roleFilter, dmgFilter, masteryMap, tierlist]);
 
   return (
     <View className="flex-1 gap-2">
@@ -188,7 +189,7 @@ export default function ChampionGrid({
                   banned={isDisabled && mode === 'ban'}
                   size="md"
                   mastery={masteryMap[champion.id]}
-                  tier={getTier(champion.id)}
+                  tier={getTier(champion.id, tierlist)}
                 />
               </View>
             );

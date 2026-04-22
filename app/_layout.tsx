@@ -7,11 +7,21 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AppProvider } from '../src/context/AppContext';
+import { AppProvider, useAppContext } from '../src/context/AppContext';
 import { useAuth } from '../src/hooks/useAuth';
 import { configureGoogleSignIn, isFirebaseConfigured } from '../src/api/firebase';
 import { requestPermissions, scheduleDailyReset, cancelDailyReset } from '../src/utils/notifications';
 import ErrorBoundary from '../src/components/ErrorBoundary';
+import { PatchDataProvider } from '../src/hooks/PatchDataContext';
+import { rankToBucket } from '../src/utils/rankBucket';
+
+// Bridges AppContext → PatchDataProvider. Must be rendered INSIDE AppProvider
+// so the patch bucket can follow the currently-linked summoner's rank tier.
+function PatchBucketBridge({ children }: { children: React.ReactNode }) {
+  const { player } = useAppContext();
+  const bucket = rankToBucket(player?.tier);
+  return <PatchDataProvider bucket={bucket}>{children}</PatchDataProvider>;
+}
 
 export default function RootLayout() {
   useEffect(() => {
@@ -48,14 +58,16 @@ export default function RootLayout() {
     <ErrorBoundary>
       <SafeAreaProvider>
         <AppProvider auth={auth}>
-          <StatusBar style="light" />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: '#0a0a13' },
-              animation: 'slide_from_right',
-            }}
-          />
+          <PatchBucketBridge>
+            <StatusBar style="light" />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: '#0a0a13' },
+                animation: 'slide_from_right',
+              }}
+            />
+          </PatchBucketBridge>
         </AppProvider>
       </SafeAreaProvider>
     </ErrorBoundary>

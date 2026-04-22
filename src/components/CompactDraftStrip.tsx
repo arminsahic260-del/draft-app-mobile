@@ -5,13 +5,13 @@ import { View, Text, Image } from 'react-native';
 import type { Champion, DraftState, Role, Team } from '../types';
 import { getChampionImageUrl } from './ChampionCard';
 
-const PHASES: DraftState['phase'][] = ['bans1', 'picks1', 'bans2', 'picks2'];
+const PHASES: DraftState['phase'][] = ['bans', 'picks'];
 const PHASE_SHORT: Record<string, string> = {
-  bans1: 'B1', picks1: 'P1', bans2: 'B2', picks2: 'P2', complete: '\u2713',
+  bans: 'BAN', picks: 'PICK', complete: '\u2713',
 };
 const PHASE_LABEL: Record<string, string> = {
-  bans1: 'Ban Phase 1', picks1: 'Pick Phase 1',
-  bans2: 'Ban Phase 2', picks2: 'Pick Phase 2',
+  bans: 'Ban Phase',
+  picks: 'Pick Phase',
   complete: 'Draft Complete',
 };
 const ROLE_ABBR: Record<Role, string> = {

@@ -52,7 +52,7 @@ export interface BanSlot {
 }
 
 export interface DraftState {
-  phase: 'bans1' | 'picks1' | 'bans2' | 'picks2' | 'complete';
+  phase: 'bans' | 'picks' | 'complete';
   currentAction: DraftAction;
   currentTeam: Team;
   playerTeam: Team;
@@ -117,6 +117,13 @@ export interface LcuStatus {
 
 export type AppScreen = 'setup' | 'draft' | 'recommendations' | 'history' | 'terms';
 
+export interface EnemyMastery {
+  puuid: string;
+  championId: string;
+  points: number;
+  level: number;
+}
+
 export interface DraftMatchResult {
   matchId: string;
   won: boolean;
@@ -132,6 +139,8 @@ export interface DraftMatchResult {
   gameEndMs: number;
   queueId: number | null;
   reviewedAt: string;
+  /** Top-mastery pick per enemy player. Missing on pre-2026-04-22 reviews. */
+  enemyMasteries?: EnemyMastery[];
 }
 
 export type DraftReviewStatus =

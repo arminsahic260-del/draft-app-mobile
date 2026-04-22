@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Armin Sahic. All rights reserved.
 // Proprietary and confidential. See LICENSE for details.
 
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { View, Text, Pressable, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -11,12 +11,11 @@ import { getPickExplanation } from '../src/api/claude';
 import { getChampionImageUrl } from '../src/components/ChampionCard';
 import { analyzeComp, draftScore } from '../src/engine/compAnalysis';
 import { redirectToCheckout } from '../src/api/stripe';
+import { usePatch } from '../src/hooks/PatchDataContext';
 import championsData from '../src/data/champions.json';
-import matchupsJson from '../src/data/matchups.json';
 import type { Recommendation, Champion, CompAnalysis } from '../src/types';
 
 const allChampions = championsData as Champion[];
-const matchupsData = matchupsJson as Record<string, Record<string, number>>;
 
 function StatBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
@@ -115,11 +114,16 @@ export default function ResultsScreen() {
   const { recommendations, draftSnapshot: draft, player, auth } = useAppContext();
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const isPro = auth.isPro || auth.isGuest;
+  const { data: patch } = usePatch();
 
-  if (!draft || !player) {
-    router.replace('/');
-    return null;
-  }
+  // If the user deep-links into /results without a completed draft, bounce
+  // them back home. Navigation must happen in an effect — triggering it in
+  // the render body violates Rules of Hooks and can loop on every render.
+  useEffect(() => {
+    if (!draft || !player) router.replace('/');
+  }, [draft, player]);
+
+  if (!draft || !player) return null;
 
   const enemyTeam = draft.playerTeam === 'blue' ? 'red' : 'blue';
 
@@ -194,7 +198,7 @@ export default function ResultsScreen() {
             onAskAI={!isPro && i > 0 ? undefined : () => askAI(rec)}
             enemyPicks={enemyPicks}
             allyPicks={allyPicks}
-            matchupsData={matchupsData}
+            matchupsData={patch.matchups}
             mastery={player.masteries.find((m) => m.championId === rec.championId)}
           />
         ))}
@@ -210,12 +214,12 @@ export default function ResultsScreen() {
             </View>
             <Pressable
               onPress={async () => {
-                if (!auth.user?.uid || !auth.user?.email) return;
+                if (!auth.user?.email) return;
                 setCheckoutLoading(true);
-                try { await redirectToCheckout(auth.user.uid, auth.user.email); }
-                catch { setCheckoutLoading(false); }
+                try { await redirectToCheckout(); }
+                finally { setCheckoutLoading(false); }
               }}
-              disabled={checkoutLoading || !auth.user?.uid}
+              disabled={checkoutLoading || !auth.user?.email}
               className={`mt-4 px-6 py-2 bg-lol-gold rounded ${checkoutLoading ? 'opacity-50' : ''}`}
             >
               <Text className="text-lol-dark font-bold text-sm">

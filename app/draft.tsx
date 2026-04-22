@@ -9,6 +9,9 @@ import { useAppContext } from '../src/context/AppContext';
 import { useDraft } from '../src/hooks/useDraft';
 import { useRemoteLiveDraft } from '../src/hooks/useRemoteLiveDraft';
 import { useTimer } from '../src/hooks/useTimer';
+import { useSettings } from '../src/hooks/useSettings';
+import { useDraftSounds } from '../src/hooks/useDraftSounds';
+import { usePatch } from '../src/hooks/PatchDataContext';
 import ChampionGrid from '../src/components/ChampionGrid';
 import CompactDraftStrip from '../src/components/CompactDraftStrip';
 import Timer from '../src/components/Timer';
@@ -56,6 +59,7 @@ export default function DraftScreen() {
   const { draft, pickChampion, banChampion, setAction, setRole, allPickedOrBanned, undo, canUndo, reset, syncLive } =
     useDraft(role, playerTeam);
   const timer = useTimer(30);
+  const { data: patch } = usePatch();
 
   // Live mode — remote (Firestore relay from PC connector)
   const handleLiveEvent = useCallback((event: LiveDraftEvent) => {
@@ -102,14 +106,14 @@ export default function DraftScreen() {
       for (const slot of [...d.picks.blue, ...d.picks.red, ...d.bans.blue, ...d.bans.red]) {
         if (slot) unavailable.push(slot);
       }
-      const id = getBotAction(d, d.currentAction, champions, unavailable);
+      const id = getBotAction(d, d.currentAction, champions, unavailable, patch.tierlist);
       if (!id) return;
       if (d.currentAction === 'ban') banChampion(id, 'red');
       else pickChampion(id, 'red');
       setBotThinking(false);
     }, 1100);
     return () => clearTimeout(t);
-  }, [draft.currentTeam, draft.currentAction, draft.phase, practiceMode, banChampion, pickChampion]);
+  }, [draft.currentTeam, draft.currentAction, draft.phase, practiceMode, banChampion, pickChampion, patch.tierlist]);
 
   const handlePreDraftBan = (championId: string) => {
     banChampion(championId, 'blue');
@@ -142,8 +146,8 @@ export default function DraftScreen() {
 
   const recommendations = useMemo(() => {
     const total = draft.picks.blue.filter(Boolean).length + draft.picks.red.filter(Boolean).length;
-    return total >= 2 ? getRecommendations(draft, player.masteries) : [];
-  }, [draft, player.masteries]);
+    return total >= 2 ? getRecommendations(draft, player.masteries, 3, patch.matchups) : [];
+  }, [draft, player.masteries, patch.matchups]);
 
   // Auto-save to AsyncStorage + Firestore on draft completion
   useEffect(() => {
@@ -192,11 +196,11 @@ export default function DraftScreen() {
   }, [draft.phase, role, auth.user?.uid, recommendations]);
 
   const banSuggestions = useMemo(() =>
-    getBanSuggestions(allPickedOrBanned, player.masteries, 5, role),
-    [allPickedOrBanned, player.masteries, role]);
+    getBanSuggestions(allPickedOrBanned, player.masteries, 5, role, patch.tierlist, patch.matchups),
+    [allPickedOrBanned, player.masteries, role, patch.tierlist, patch.matchups]);
 
   const handleGetRecommendations = () => {
-    const recs = getRecommendations(draft, player.masteries);
+    const recs = getRecommendations(draft, player.masteries, 3, patch.matchups);
     setRecommendations(recs);
     setDraftSnapshot(draft);
     router.push('/results');
@@ -213,6 +217,13 @@ export default function DraftScreen() {
   const isBotTurn = practiceMode && draft.currentTeam === 'red' && draft.phase !== 'complete';
   const isGridDisabled = !!liveMode || isBotTurn;
   const isYourTurn = draft.currentTeam === playerTeam && draft.currentAction === 'pick' && draft.phase !== 'complete';
+
+  const { settings } = useSettings();
+  useDraftSounds({
+    enabled: settings.soundEnabled,
+    isYourTurn,
+    liveMode: !!liveMode,
+  });
 
   const enemyPickCount = draft.picks.red.filter(Boolean).length;
   const weaknessCallout = useMemo(() => {

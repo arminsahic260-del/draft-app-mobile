@@ -1,17 +1,51 @@
 // Copyright (c) 2026 Armin Sahic. All rights reserved.
 // Proprietary and confidential. See LICENSE for details.
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Image, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppContext } from '../src/context/AppContext';
 import { usePlayer } from '../src/hooks/usePlayer';
 import RolePicker from '../src/components/RolePicker';
+import LivePcSessionCard from '../src/components/LivePcSessionCard';
+import { useSettings } from '../src/hooks/useSettings';
+import { requestPermissions } from '../src/utils/notifications';
 import { isFirebaseConfigured, FREE_DRAFT_LIMIT, incrementDraftCount } from '../src/api/firebase';
 import { redirectToCheckout, redirectToPortal } from '../src/api/stripe';
+import { usePatch } from '../src/hooks/PatchDataContext';
+import { rankBucketLabel } from '../src/utils/rankBucket';
 import { ENV } from '../src/config/env';
 import type { Role } from '../src/types';
+
+function formatAge(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return 'just now';
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+function PatchBadge() {
+  const { data, loading, bucket } = usePatch();
+  if (loading) return null;
+  const toneClass = data.isLive
+    ? 'border-lol-gold/30 text-lol-gold/70'
+    : 'border-lol-border text-lol-text/50';
+  const bucketLabel = rankBucketLabel(bucket);
+  return (
+    <View className={`mt-2 self-center px-1.5 py-px rounded border ${toneClass}`}>
+      <Text className={`text-[10px] ${data.isLive ? 'text-lol-gold/70' : 'text-lol-text/50'}`}>
+        {data.isLive ? '● live' : '○ bundled'} · {bucketLabel} · {formatAge(data.meta.updatedAt)}
+      </Text>
+    </View>
+  );
+}
 
 const REGIONS = [
   { label: 'EUW',  value: 'euw1' },
@@ -27,12 +61,32 @@ const REGIONS = [
   { label: 'RU',   value: 'ru'   },
 ];
 
+const LINKED_SUMMONER_KEY = 'linked-summoner';
+
 export default function SetupScreen() {
   const { auth, setPlayer, setRole, setPracticeMode, setLiveMode, role } = useAppContext();
   const [name, setName] = useState('');
   const [region, setRegion] = useState(ENV.RIOT_REGION || 'euw1');
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const { player, loading, error, lookupPlayer } = usePlayer();
+  const { settings, toggleSound } = useSettings();
+
+  const handleToggleSound = async () => {
+    // Turning ON — make sure we have notification permission first, otherwise
+    // the alert will silently fail when the user's turn actually starts.
+    if (!settings.soundEnabled) {
+      const granted = await requestPermissions();
+      if (!granted) {
+        Alert.alert(
+          'Notifications disabled',
+          'Enable notifications for DraftDiff in system settings to receive turn alerts.',
+          [{ text: 'OK' }],
+        );
+        return;
+      }
+    }
+    toggleSound();
+  };
 
   const proxyConfigured = !!ENV.RIOT_PROXY_URL;
   const API_BASE = ENV.API_BASE;
@@ -41,6 +95,35 @@ export default function SetupScreen() {
   const handleSearch = () => {
     if (name.trim()) lookupPlayer(name.trim(), region);
   };
+
+  // Persist on successful lookup so the next visit prefills.
+  useEffect(() => {
+    if (player) {
+      AsyncStorage.setItem(
+        LINKED_SUMMONER_KEY,
+        JSON.stringify({ name: `${player.summonerName}#${player.tagLine}`, region }),
+      ).catch(() => { /* ignore — quota / private mode */ });
+    }
+  }, [player, region]);
+
+  // Hydrate from AsyncStorage on mount, then auto-lookup once.
+  const autoLookupRan = useRef(false);
+  useEffect(() => {
+    if (autoLookupRan.current) return;
+    autoLookupRan.current = true;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(LINKED_SUMMONER_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw) as { name?: string; region?: string };
+        if (!saved?.name) return;
+        setName(saved.name);
+        if (saved.region) setRegion(saved.region);
+        lookupPlayer(saved.name.trim(), saved.region ?? region);
+      } catch { /* corrupt entry — ignore */ }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const canStart = player !== null && selectedRole !== null;
 
@@ -101,7 +184,39 @@ export default function SetupScreen() {
             <Text className="text-sm text-lol-text mt-1">
               Smart champion recommendations for your ranked games
             </Text>
+            <PatchBadge />
           </View>
+
+          {/* Live PC session card — only renders when a live session is published */}
+          {isFirebaseConfigured && auth.user && (
+            <LivePcSessionCard player={player} selectedRole={selectedRole} />
+          )}
+
+          {/* Turn alert toggle */}
+          <Pressable
+            onPress={handleToggleSound}
+            className="bg-lol-card border border-lol-border rounded-lg px-4 py-3 flex-row items-center justify-between active:opacity-70"
+            accessibilityRole="switch"
+            accessibilityState={{ checked: settings.soundEnabled }}
+          >
+            <View className="flex-1 pr-3">
+              <Text className="text-xs font-semibold text-lol-text-bright">Turn alerts</Text>
+              <Text className="text-[10px] text-lol-text/60 mt-0.5">
+                Push notification when it's your turn in a live PC draft
+              </Text>
+            </View>
+            <View className={`px-2 py-0.5 rounded border ${
+              settings.soundEnabled
+                ? 'bg-lol-gold/15 border-lol-gold/40'
+                : 'bg-lol-darker border-lol-border'
+            }`}>
+              <Text className={`text-[10px] font-bold uppercase ${
+                settings.soundEnabled ? 'text-lol-gold' : 'text-lol-text/50'
+              }`}>
+                {settings.soundEnabled ? 'On' : 'Off'}
+              </Text>
+            </View>
+          </Pressable>
 
           {/* Auth bar */}
           {isFirebaseConfigured && (
@@ -130,7 +245,7 @@ export default function SetupScreen() {
                     {auth.isPro && (
                       <Pressable onPress={() => {
                         if (API_BASE) {
-                          auth.user && redirectToPortal(auth.user.uid);
+                          redirectToPortal();
                         } else {
                           Alert.alert('Coming soon', 'Subscription management is not yet available.');
                         }
@@ -141,7 +256,7 @@ export default function SetupScreen() {
                     {!auth.isPro && auth.user?.email && (
                       <Pressable onPress={() => {
                         if (API_BASE) {
-                          redirectToCheckout(auth.user!.uid, auth.user!.email!);
+                          redirectToCheckout();
                         } else {
                           Alert.alert('Coming soon', 'Pro upgrade is not yet available.');
                         }

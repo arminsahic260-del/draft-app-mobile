@@ -11,16 +11,16 @@ interface DraftBoardProps {
   onRoleChange?: (team: Team, slotIndex: number, role: Role) => void;
 }
 
-const PHASES: DraftState['phase'][] = ['bans1', 'picks1', 'bans2', 'picks2', 'complete'];
+const PHASES: DraftState['phase'][] = ['bans', 'picks', 'complete'];
 
 const PHASE_LABELS: Record<DraftState['phase'], string> = {
-  bans1: 'Ban Phase 1', picks1: 'Pick Phase 1',
-  bans2: 'Ban Phase 2', picks2: 'Pick Phase 2',
+  bans: 'Ban Phase',
+  picks: 'Pick Phase',
   complete: 'Draft Complete',
 };
 
 const PHASE_SHORT: Record<DraftState['phase'], string> = {
-  bans1: 'B1', picks1: 'P1', bans2: 'B2', picks2: 'P2', complete: '\u2713',
+  bans: 'BAN', picks: 'PICK', complete: '\u2713',
 };
 
 const ALL_ROLES: Role[] = ['top', 'jungle', 'mid', 'adc', 'support'];

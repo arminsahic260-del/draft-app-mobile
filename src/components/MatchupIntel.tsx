@@ -4,9 +4,7 @@
 import { View, Text, Image } from 'react-native';
 import type { Recommendation, Champion } from '../types';
 import { getChampionImageUrl } from './ChampionCard';
-import matchupsData from '../data/matchups.json';
-
-const matchups = matchupsData as Record<string, Record<string, number>>;
+import { usePatch } from '../hooks/PatchDataContext';
 
 interface MatchupIntelProps {
   enemyPickIds: string[];
@@ -14,7 +12,11 @@ interface MatchupIntelProps {
   allChampions: Champion[];
 }
 
-function getDelta(playerChampId: string | undefined, enemyChampId: string): number | null {
+function getDelta(
+  playerChampId: string | undefined,
+  enemyChampId: string,
+  matchups: Record<string, Record<string, number>>,
+): number | null {
   if (!playerChampId) return null;
   const champMatchups = matchups[playerChampId];
   if (!champMatchups) return null;
@@ -30,6 +32,7 @@ function AdvBadge({ delta }: { delta: number | null }) {
 }
 
 export default function MatchupIntel({ enemyPickIds, topRecommendation, allChampions }: MatchupIntelProps) {
+  const { data: patch } = usePatch();
   const validEnemies = enemyPickIds.filter(Boolean);
   if (validEnemies.length === 0 || !topRecommendation) return null;
 
@@ -53,7 +56,7 @@ export default function MatchupIntel({ enemyPickIds, topRecommendation, allChamp
         {validEnemies.map((enemyId) => {
           const champ = allChampions.find((c) => c.id === enemyId);
           if (!champ) return null;
-          const delta = getDelta(playerChampId, enemyId);
+          const delta = getDelta(playerChampId, enemyId, patch.matchups);
           return (
             <View key={enemyId} className="flex-row items-center gap-2 py-0.5">
               <Image source={{ uri: getChampionImageUrl(champ.ddragonId) }} className="w-6 h-6 rounded" resizeMode="cover" />

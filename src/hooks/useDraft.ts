@@ -6,24 +6,19 @@ import type { DraftState, DraftAction, Role, Team, LiveDraftEvent } from '../typ
 
 const DEFAULT_ROLES: Role[] = ['top', 'jungle', 'mid', 'adc', 'support'];
 
+// Solo-queue ranked format: all 10 bans up front (5 per team, alternating),
+// then all 10 picks. See web useDraft.ts for the same rationale.
 const PHASE_BAN_LIMITS: Record<DraftState['phase'], number> = {
-  bans1: 3, picks1: 0, bans2: 2, picks2: 0, complete: 0,
+  bans: 5, picks: 0, complete: 0,
 };
 
 const PHASE_PICK_LIMITS: Record<DraftState['phase'], number> = {
-  bans1: 0, picks1: 3, bans2: 0, picks2: 2, complete: 0,
+  bans: 0, picks: 5, complete: 0,
 };
-
-const PHASE_ORDER: DraftState['phase'][] = ['bans1', 'picks1', 'bans2', 'picks2', 'complete'];
-
-function nextPhase(current: DraftState['phase']): DraftState['phase'] {
-  const idx = PHASE_ORDER.indexOf(current);
-  return PHASE_ORDER[Math.min(idx + 1, PHASE_ORDER.length - 1)];
-}
 
 function makeInitialState(playerRole: Role, playerTeam: Team): DraftState {
   return {
-    phase: 'bans1',
+    phase: 'bans',
     currentAction: 'ban',
     currentTeam: 'blue',
     playerTeam,
@@ -76,23 +71,14 @@ function draftReducer(state: DraftWithHistory, action: ReducerAction): DraftWith
       if (PHASE_BAN_LIMITS[draft.phase] === 0) return state;
 
       const newBans = { ...draft.bans, [team]: fillNextSlot(draft.bans[team], championId) };
-      const blueFilled = countFilled(newBans.blue);
-      const redFilled  = countFilled(newBans.red);
-      const endBlue = draft.phase === 'bans1' ? 3 : 5;
-      const endRed  = draft.phase === 'bans1' ? 3 : 5;
-      const phaseComplete = blueFilled >= endBlue && redFilled >= endRed;
+      const phaseComplete = countFilled(newBans.blue) >= 5 && countFilled(newBans.red) >= 5;
 
-      let next: DraftState;
-      if (phaseComplete) {
-        const np = nextPhase(draft.phase);
-        next = {
-          ...draft, bans: newBans, phase: np,
-          currentAction: np === 'complete' ? 'ban' : PHASE_PICK_LIMITS[np] > 0 ? 'pick' : 'ban',
-          currentTeam: 'blue',
-        };
-      } else {
-        next = { ...draft, bans: newBans, currentTeam: team === 'blue' ? 'red' : 'blue' };
-      }
+      // Solo-queue bans are simultaneous (all 10 players ban in parallel), so
+      // we don't flip currentTeam between bans. The phase exit transitions to
+      // blue first pick.
+      const next: DraftState = phaseComplete
+        ? { ...draft, bans: newBans, phase: 'picks', currentAction: 'pick', currentTeam: 'blue' }
+        : { ...draft, bans: newBans };
       return { current: next, history: [...state.history, draft] };
     }
 
@@ -101,23 +87,11 @@ function draftReducer(state: DraftWithHistory, action: ReducerAction): DraftWith
       if (PHASE_PICK_LIMITS[draft.phase] === 0) return state;
 
       const newPicks = { ...draft.picks, [team]: fillNextSlot(draft.picks[team], championId) };
-      const blueFilled = countFilled(newPicks.blue);
-      const redFilled  = countFilled(newPicks.red);
-      const endBlue = draft.phase === 'picks1' ? 3 : 5;
-      const endRed  = draft.phase === 'picks1' ? 3 : 5;
-      const phaseComplete = blueFilled >= endBlue && redFilled >= endRed;
+      const phaseComplete = countFilled(newPicks.blue) >= 5 && countFilled(newPicks.red) >= 5;
 
-      let next: DraftState;
-      if (phaseComplete) {
-        const np = nextPhase(draft.phase);
-        next = {
-          ...draft, picks: newPicks, phase: np,
-          currentAction: np === 'complete' ? 'pick' : PHASE_BAN_LIMITS[np] > 0 ? 'ban' : 'pick',
-          currentTeam: 'blue',
-        };
-      } else {
-        next = { ...draft, picks: newPicks, currentTeam: team === 'blue' ? 'red' : 'blue' };
-      }
+      const next: DraftState = phaseComplete
+        ? { ...draft, picks: newPicks, phase: 'complete', currentTeam: 'blue' }
+        : { ...draft, picks: newPicks, currentTeam: team === 'blue' ? 'red' : 'blue' };
       return { current: next, history: [...state.history, draft] };
     }
 

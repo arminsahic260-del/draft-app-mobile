@@ -2,7 +2,7 @@
 // Proprietary and confidential. See LICENSE for details.
 
 import { createContext, useContext, useState, useCallback } from 'react';
-import type { PlayerProfile, Role, Recommendation, DraftState } from '../types';
+import type { PlayerProfile, Role, Recommendation, DraftState, LocalDraftRecord } from '../types';
 import type { AuthState } from '../hooks/useAuth';
 
 interface AppContextValue {
@@ -23,6 +23,10 @@ interface AppContextValue {
   setRecommendations: (r: Recommendation[]) => void;
   draftSnapshot: DraftState | null;
   setDraftSnapshot: (d: DraftState | null) => void;
+
+  // Diff (selected pair for /diff)
+  diffPair: [LocalDraftRecord, LocalDraftRecord] | null;
+  setDiffPair: (p: [LocalDraftRecord, LocalDraftRecord] | null) => void;
 
   // Auth
   auth: AuthState;
@@ -46,13 +50,16 @@ export function AppProvider({ children, auth }: { children: React.ReactNode; aut
   const [liveMode, setLiveMode]               = useState(false);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [draftSnapshot, setDraftSnapshot]     = useState<DraftState | null>(null);
+  const [diffPair, setDiffPair]               = useState<[LocalDraftRecord, LocalDraftRecord] | null>(null);
 
   const resetAll = useCallback(() => {
     setPlayer(null);
+    setRole('mid');
     setPracticeMode(false);
     setLiveMode(false);
     setRecommendations([]);
     setDraftSnapshot(null);
+    setDiffPair(null);
   }, []);
 
   return (
@@ -63,6 +70,7 @@ export function AppProvider({ children, auth }: { children: React.ReactNode; aut
       setPracticeMode, setLiveMode,
       recommendations, setRecommendations,
       draftSnapshot, setDraftSnapshot,
+      diffPair, setDiffPair,
       auth,
       resetAll,
     }}>

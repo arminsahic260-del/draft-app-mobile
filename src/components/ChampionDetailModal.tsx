@@ -5,15 +5,12 @@ import { View, Text, Pressable, Modal, ScrollView, Image } from 'react-native';
 import type { Champion } from '../types';
 import { getChampionImageUrl } from './ChampionCard';
 import { getChampionPhaseCurve } from '../engine/compAnalysis';
-import matchupsData from '../data/matchups.json';
-import tierlistData from '../data/tierlist.json';
 import championsData from '../data/champions.json';
+import { usePatch } from '../hooks/PatchDataContext';
 
-const matchups  = matchupsData as Record<string, Record<string, number>>;
-const tierlist  = tierlistData as Record<string, string[]>;
 const allChamps = championsData as Champion[];
 
-function getTier(id: string): string | undefined {
+function getTier(id: string, tierlist: Record<string, string[]>): string | undefined {
   for (const [tier, ids] of Object.entries(tierlist)) {
     if (ids.includes(id)) return tier;
   }
@@ -79,10 +76,11 @@ interface ChampionDetailModalProps {
 }
 
 export default function ChampionDetailModal({ champion, onClose }: ChampionDetailModalProps) {
-  const tier = getTier(champion.id);
+  const { data: patch } = usePatch();
+  const tier = getTier(champion.id, patch.tierlist);
   const [early, mid, late] = getChampionPhaseCurve(champion.id);
 
-  const champMatchups = matchups[champion.id] ?? {};
+  const champMatchups = patch.matchups[champion.id] ?? {};
   const sortedMatchups = Object.entries(champMatchups).sort((a, b) => b[1] - a[1]);
   const bestMatchups  = sortedMatchups.slice(0, 5);
   const worstMatchups = sortedMatchups.slice(-5).reverse();
