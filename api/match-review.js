@@ -137,12 +137,40 @@ export default async function handler(req, res) {
       const match = await riotFetch(cluster, `/lol/match/v5/matches/${id}`, apiKey);
       if (!matchOverlapsDraft(match, idMap, draftPickSet)) continue;
 
-      const player = match.info?.participants?.find((p) => p.puuid === puuid);
+      const participants = match.info?.participants ?? [];
+      const player = participants.find((p) => p.puuid === puuid);
       if (!player) continue;
 
       const championId = idMap[player.championId] ?? null;
       const durationSec = Number(match.info?.gameDuration ?? 0);
       if (durationSec > 0 && durationSec < 300) continue;
+
+      // Fan out to champion-mastery for each enemy's top pick. allSettled so
+      // an opted-out player doesn't tank the review.
+      const enemyParticipants = participants.filter(
+        (p) => p.teamId !== player.teamId && p.puuid,
+      );
+      const masteryResults = await Promise.allSettled(
+        enemyParticipants.map((p) =>
+          riotFetch(region, `/lol/champion-mastery/v4/champion-masteries/by-puuid/${p.puuid}/top?count=1`, apiKey),
+        ),
+      );
+      const enemyMasteries = masteryResults
+        .map((r, i) => {
+          if (r.status !== 'fulfilled') return null;
+          const top = Array.isArray(r.value) ? r.value[0] : null;
+          if (!top) return null;
+          const slug = idMap[top.championId];
+          if (!slug) return null;
+          return {
+            puuid:      enemyParticipants[i].puuid,
+            championId: slug,
+            points:     top.championPoints ?? 0,
+            level:      top.championLevel ?? 0,
+          };
+        })
+        .filter((m) => m !== null)
+        .sort((a, b) => b.points - a.points);
 
       return res.status(200).json({
         result: {
@@ -159,6 +187,7 @@ export default async function handler(req, res) {
           durationSec,
           gameEndMs:     Number(match.info?.gameEndTimestamp ?? 0),
           queueId:       match.info?.queueId ?? null,
+          enemyMasteries,
         },
       });
     }

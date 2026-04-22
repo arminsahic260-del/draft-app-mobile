@@ -12,7 +12,7 @@ import { isFirebaseConfigured, loadRecentDrafts, type SavedDraftDoc } from '../s
 import { fetchMatchReview } from '../src/api/riot';
 import { analyzeComp, draftScore } from '../src/engine/compAnalysis';
 import championsData from '../src/data/champions.json';
-import type { Champion, LocalDraftRecord, DraftReviewStatus } from '../src/types';
+import type { Champion, LocalDraftRecord, DraftReviewStatus, DraftMatchResult } from '../src/types';
 
 const allChamps = championsData as Champion[];
 
@@ -39,6 +39,36 @@ function ScoreBadge({ score, team }: { score: number; team: 'blue' | 'red' }) {
     <Text className={`text-[10px] font-bold border rounded px-1 py-px ${color}`}>
       {label} {score}
     </Text>
+  );
+}
+
+function formatMasteryPoints(p: number): string {
+  if (p >= 1_000_000) return `${(p / 1_000_000).toFixed(1)}M`;
+  if (p >= 1_000)     return `${Math.round(p / 1_000)}K`;
+  return String(p);
+}
+
+function EnemyComfortRow({ enemyMasteries }: { enemyMasteries: NonNullable<DraftMatchResult['enemyMasteries']> }) {
+  if (enemyMasteries.length === 0) return null;
+  return (
+    <View className="border-t border-lol-border/40 pt-2 flex-row items-center gap-2 flex-wrap">
+      <Text className="text-[10px] text-lol-text/50 uppercase tracking-wide">Enemy comfort</Text>
+      <View className="flex-row gap-1">
+        {enemyMasteries.map((m) => {
+          const c = allChamps.find((ch) => ch.id === m.championId);
+          if (!c) return null;
+          return (
+            <Image
+              key={m.puuid}
+              source={{ uri: getChampionImageUrl(c.ddragonId) }}
+              accessibilityLabel={`${c.name} ${formatMasteryPoints(m.points)} pts`}
+              className="w-5 h-5 rounded border border-lol-border/50"
+              resizeMode="cover"
+            />
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -460,6 +490,11 @@ export default function HistoryScreen() {
                         onRetry={() => runReview(rec)}
                       />
                     </View>
+                  )}
+
+                  {/* Enemy comfort — what opponents were most played on */}
+                  {!compareMode && rec.review?.kind === 'reviewed' && rec.review.result.enemyMasteries && (
+                    <EnemyComfortRow enemyMasteries={rec.review.result.enemyMasteries} />
                   )}
                 </View>
               );
