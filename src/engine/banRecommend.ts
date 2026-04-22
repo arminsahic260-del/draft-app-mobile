@@ -3,12 +3,12 @@
 
 import type { Champion, PlayerMastery, Role } from '../types';
 import allChampions from '../data/champions.json';
-import matchupsData from '../data/matchups.json';
-import tierlistData from '../data/tierlist.json';
+import bundledMatchups from '../data/matchups.json';
+import bundledTierlist from '../data/tierlist.json';
 
 const champions = allChampions as Champion[];
-const matchups  = matchupsData  as Record<string, Record<string, number>>;
-const tierlist  = tierlistData  as Record<string, string[]>;
+const DEFAULT_MATCHUPS = bundledMatchups as Record<string, Record<string, number>>;
+const DEFAULT_TIERLIST = bundledTierlist as Record<string, string[]>;
 
 export interface BanSuggestion {
   championId: string;
@@ -19,7 +19,7 @@ export interface BanSuggestion {
   priority: number; // 0-1
 }
 
-function getTier(championId: string): string {
+function getTier(championId: string, tierlist: Record<string, string[]>): string {
   for (const [tier, ids] of Object.entries(tierlist)) {
     if (ids.includes(championId)) return tier;
   }
@@ -31,7 +31,11 @@ function tierScore(tier: string): number {
 }
 
 /** How much does the enemy champion threaten the player's top picks? */
-function threatScore(enemyId: string, playerMasteries: PlayerMastery[]): number {
+function threatScore(
+  enemyId: string,
+  playerMasteries: PlayerMastery[],
+  matchups: Record<string, Record<string, number>>,
+): number {
   const topMasteries = [...playerMasteries]
     .sort((a, b) => b.masteryPoints - a.masteryPoints)
     .slice(0, 5);
@@ -54,14 +58,16 @@ export function getBanSuggestions(
   playerMasteries: PlayerMastery[],
   limit = 5,
   playerRole?: Role,
+  tierlist: Record<string, string[]> = DEFAULT_TIERLIST,
+  matchups: Record<string, Record<string, number>> = DEFAULT_MATCHUPS,
 ): BanSuggestion[] {
   const unavailable = new Set(unavailableIds);
 
   return champions
     .filter((c) => !unavailable.has(c.id))
     .map((c) => {
-      const tier   = getTier(c.id);
-      const threat = threatScore(c.id, playerMasteries);
+      const tier   = getTier(c.id, tierlist);
+      const threat = threatScore(c.id, playerMasteries, matchups);
       const meta   = tierScore(tier);
       const laneBonus = playerRole && c.roles.includes(playerRole) ? 0.25 : 0;
       const priority  = 0.35 * threat + 0.40 * meta + 0.25 * laneBonus;

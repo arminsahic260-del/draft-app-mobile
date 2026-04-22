@@ -7,6 +7,9 @@ import { analyzeComp } from './compAnalysis';
 const MATCHUP_MIN = -8;
 const MATCHUP_MAX = 8;
 const MASTERY_POINTS_MAX = 300000;
+// Below this many games, winrate signal is discounted linearly — a 100% WR
+// over 1 game should not out-score a 55% WR over 40 games.
+const WINRATE_MIN_SAMPLE = 10;
 
 /**
  * Averages win-rate deltas of championId vs each enemy and normalizes to 0-1.
@@ -110,8 +113,17 @@ export function calculateMasteryScore(championId: string, masteries: PlayerMaste
   // Normalize mastery points to [0, 1]
   const pointsScore = Math.min(mastery.masteryPoints / MASTERY_POINTS_MAX, 1);
 
-  // Normalize win rate from percentage (e.g. 56.2) to [0, 1]
-  const winRateScore = Math.max(0, Math.min(1, mastery.winRate / 100));
+  // Win rate is either null (no games this season) or a percentage (0–100).
+  // Pull unplayed champions toward the neutral 0.5 baseline, and shrink
+  // small-sample win rates toward 0.5 so a 2-game hot streak doesn't
+  // dominate a statistically meaningful 30-game average.
+  let winRateScore = 0.5;
+  if (mastery.winRate !== null && Number.isFinite(mastery.winRate)) {
+    const raw = Math.max(0, Math.min(1, mastery.winRate / 100));
+    const games = mastery.gamesPlayed ?? 0;
+    const confidence = Math.min(1, games / WINRATE_MIN_SAMPLE);
+    winRateScore = 0.5 + (raw - 0.5) * confidence;
+  }
 
   // Weight: 60% mastery points depth, 40% win rate performance
   return 0.6 * pointsScore + 0.4 * winRateScore;

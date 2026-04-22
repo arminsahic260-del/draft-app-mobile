@@ -2,13 +2,13 @@
 // Proprietary and confidential. See LICENSE for details.
 
 import type { Champion, DraftState, Role } from '../types';
-import tierlistData from '../data/tierlist.json';
+import bundledTierlist from '../data/tierlist.json';
 
-const tierlist = tierlistData as Record<string, string[]>;
+const DEFAULT_TIERLIST = bundledTierlist as Record<string, string[]>;
 const TIER_ORDER = ['S', 'A', 'B', 'C'];
 const DEFAULT_ROLES: Role[] = ['top', 'jungle', 'mid', 'adc', 'support'];
 
-function tierRank(id: string): number {
+function tierRank(id: string, tierlist: Record<string, string[]>): number {
   for (let i = 0; i < TIER_ORDER.length; i++) {
     if (tierlist[TIER_ORDER[i]]?.includes(id)) return i;
   }
@@ -25,12 +25,13 @@ export function getBotAction(
   action: 'pick' | 'ban',
   allChampions: Champion[],
   unavailable: string[],
+  tierlist: Record<string, string[]> = DEFAULT_TIERLIST,
 ): string | null {
   const taken = new Set(unavailable);
   const available = allChampions.filter((c) => !taken.has(c.id));
 
   if (action === 'ban') {
-    return available.sort((a, b) => tierRank(a.id) - tierRank(b.id))[0]?.id ?? null;
+    return available.sort((a, b) => tierRank(a.id, tierlist) - tierRank(b.id, tierlist))[0]?.id ?? null;
   }
 
   // Pick: next role slot for red team
@@ -39,10 +40,10 @@ export function getBotAction(
 
   const roleMatch = available
     .filter((c) => c.roles.includes(neededRole))
-    .sort((a, b) => tierRank(a.id) - tierRank(b.id));
+    .sort((a, b) => tierRank(a.id, tierlist) - tierRank(b.id, tierlist));
 
   if (roleMatch.length > 0) return roleMatch[0].id;
 
   // Fallback: any available champion by tier
-  return available.sort((a, b) => tierRank(a.id) - tierRank(b.id))[0]?.id ?? null;
+  return available.sort((a, b) => tierRank(a.id, tierlist) - tierRank(b.id, tierlist))[0]?.id ?? null;
 }

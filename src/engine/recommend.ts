@@ -3,7 +3,7 @@
 
 import type { Champion, DraftState, PlayerMastery, Recommendation } from '../types';
 import allChampions from '../data/champions.json';
-import matchups from '../data/matchups.json';
+import bundledMatchups from '../data/matchups.json';
 import {
   calculateMatchupScore,
   calculateCompNeedScore,
@@ -11,12 +11,13 @@ import {
 } from './scoring';
 
 const champions = allChampions as Champion[];
-const matchupsData = matchups as Record<string, Record<string, number>>;
+const DEFAULT_MATCHUPS = bundledMatchups as Record<string, Record<string, number>>;
 
 export function getRecommendations(
   draft: DraftState,
   masteries: PlayerMastery[],
   limit = 3,
+  matchups: Record<string, Record<string, number>> = DEFAULT_MATCHUPS,
 ): Recommendation[] {
   const { playerRole, playerTeam, picks, bans } = draft;
 
@@ -39,14 +40,14 @@ export function getRecommendations(
   const enemyPickIds = picks[enemyTeam].filter((id): id is string => id !== null);
 
   const recommendations: Recommendation[] = candidates.map((champ) => {
-    const matchupScore  = calculateMatchupScore(champ.id, enemyPickIds, matchupsData);
+    const matchupScore  = calculateMatchupScore(champ.id, enemyPickIds, matchups);
     const compNeedScore = calculateCompNeedScore(champ.id, teamPickIds, champions);
     const masteryScore  = calculateMasteryScore(champ.id, masteries);
 
     const finalScore     = 0.4 * matchupScore + 0.3 * compNeedScore + 0.3 * masteryScore;
     const winProbability = 45 + finalScore * 15;
 
-    const counterTarget = getBestCounterTarget(champ.id, enemyPickIds);
+    const counterTarget = getBestCounterTarget(champ.id, enemyPickIds, matchups);
     const reasoning     = buildReasoning(champ, matchupScore, compNeedScore, masteries, enemyPickIds, counterTarget);
 
     return {
@@ -69,8 +70,9 @@ export function getRecommendations(
 function getBestCounterTarget(
   championId: string,
   enemyPickIds: string[],
+  matchups: Record<string, Record<string, number>>,
 ): Recommendation['counterTarget'] {
-  const champMatchups = matchupsData[championId];
+  const champMatchups = matchups[championId];
   if (!champMatchups || enemyPickIds.length === 0) return undefined;
 
   let bestDelta = 0;
@@ -117,7 +119,11 @@ function buildReasoning(
   }
 
   const mastery = masteries.find((m) => m.championId === champ.id);
-  if (mastery) parts.push(`${mastery.gamesPlayed} games · ${Math.round(mastery.winRate)}% WR.`);
+  if (mastery && mastery.winRate !== null) {
+    parts.push(`${mastery.gamesPlayed} games · ${Math.round(mastery.winRate)}% WR.`);
+  } else if (mastery && mastery.gamesPlayed > 0) {
+    parts.push(`${mastery.gamesPlayed} games this season.`);
+  }
 
   return parts.join(' ').trim() || 'Solid pick for this draft.';
 }
