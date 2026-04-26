@@ -2,7 +2,7 @@
 // Proprietary and confidential. See LICENSE for details.
 
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, Pressable, ScrollView, Image } from 'react-native';
+import { View, Text, Pressable, ScrollView, Image, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAppContext } from '../src/context/AppContext';
@@ -65,7 +65,14 @@ export default function DraftScreen() {
   const handleLiveEvent = useCallback((event: LiveDraftEvent) => {
     syncLive(event);
   }, [syncLive]);
-  const handleSessionEnd = useCallback((_reason: string) => {}, []);
+  const handleSessionEnd = useCallback((reason: string) => {
+    const message = reason === 'completed'
+      ? 'The PC champ-select ended. Returning to setup.'
+      : `Live session disconnected (${reason}).`;
+    Alert.alert('Live mode ended', message, [
+      { text: 'OK', onPress: () => { resetAll(); router.replace('/'); } },
+    ]);
+  }, [resetAll]);
   const { status: liveStatus } = useRemoteLiveDraft({
     uid: auth.user?.uid,
     onEvent: handleLiveEvent,
