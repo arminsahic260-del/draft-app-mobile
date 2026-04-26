@@ -64,7 +64,7 @@ const REGIONS = [
 const LINKED_SUMMONER_KEY = 'linked-summoner';
 
 export default function SetupScreen() {
-  const { auth, setPlayer, setRole, setPracticeMode, setLiveMode, role } = useAppContext();
+  const { auth, setPlayer, setRole, setPracticeMode, setLiveMode, role, resetAll } = useAppContext();
   const [name, setName] = useState('');
   const [region, setRegion] = useState(ENV.RIOT_REGION || 'euw1');
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
@@ -102,7 +102,7 @@ export default function SetupScreen() {
       AsyncStorage.setItem(
         LINKED_SUMMONER_KEY,
         JSON.stringify({ name: `${player.summonerName}#${player.tagLine}`, region }),
-      ).catch(() => { /* ignore — quota / private mode */ });
+      ).catch((err) => console.warn('[setup] failed to persist summoner:', err?.message ?? err));
     }
   }, [player, region]);
 
@@ -130,8 +130,8 @@ export default function SetupScreen() {
   const handleStart = async () => {
     if (!canStart) return;
     if (isFirebaseConfigured && auth.user && !auth.isPro) {
-      const { count } = await incrementDraftCount(auth.user.uid);
-      if (count > FREE_DRAFT_LIMIT) {
+      const { allowed } = await incrementDraftCount(auth.user.uid, FREE_DRAFT_LIMIT);
+      if (!allowed) {
         Alert.alert(
           'Daily limit reached',
           'Free accounts get 3 drafts per day. Upgrade to Pro for unlimited drafts.',
@@ -150,8 +150,8 @@ export default function SetupScreen() {
   const handlePractice = async () => {
     if (!canStart) return;
     if (isFirebaseConfigured && auth.user && !auth.isPro) {
-      const { count } = await incrementDraftCount(auth.user.uid);
-      if (count > FREE_DRAFT_LIMIT) {
+      const { allowed } = await incrementDraftCount(auth.user.uid, FREE_DRAFT_LIMIT);
+      if (!allowed) {
         Alert.alert(
           'Daily limit reached',
           'Free accounts get 3 drafts per day. Upgrade to Pro for unlimited drafts.',
@@ -265,7 +265,7 @@ export default function SetupScreen() {
                       </Pressable>
                     )}
                   </View>
-                  <Pressable onPress={auth.signOut}>
+                  <Pressable onPress={() => { resetAll(); auth.signOut(); }}>
                     <Text className="text-[10px] text-lol-text/60">Sign out</Text>
                   </Pressable>
                 </>

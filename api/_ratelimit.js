@@ -26,9 +26,11 @@ function maybeSweep(now) {
   }
 }
 
-export function checkRateLimit(req, { bucket, capacity, refillSeconds }) {
-  const ip = clientIp(req);
-  const key = `${bucket}:${ip}`;
+export function checkRateLimit(req, { bucket, capacity, refillSeconds, identifier }) {
+  // identifier wins when supplied (e.g. authenticated uid) so per-user budgets
+  // are enforced regardless of source IP. Falls back to client IP otherwise.
+  const id = typeof identifier === 'string' && identifier.length > 0 ? identifier : clientIp(req);
+  const key = `${bucket}:${id}`;
   const now = Date.now();
   const refillPerMs = 1 / (refillSeconds * 1000);
 

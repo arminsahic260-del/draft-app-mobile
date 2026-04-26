@@ -5,6 +5,7 @@
 // Claude key is never shipped in the APK.
 
 import { verifyAuth } from './_firebase.js';
+import { checkRateLimit } from './_ratelimit.js';
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-haiku-4-5-20251001';
@@ -58,6 +59,19 @@ export default async function handler(req, res) {
 
   const decoded = await verifyAuth(req, res);
   if (!decoded) return; // 401 already sent
+
+  // Per-user budget: 30-burst, refills at 1 token / 120s -> ~30 calls/hour
+  // sustained. Caps cost amplification if a Firebase token leaks.
+  const rl = checkRateLimit(req, {
+    bucket: 'claude',
+    capacity: 30,
+    refillSeconds: 120,
+    identifier: decoded.uid,
+  });
+  if (!rl.allowed) {
+    res.setHeader('Retry-After', String(Math.ceil(rl.retryAfter)));
+    return res.status(429).json({ error: 'AI explanation rate limit reached — try again in a moment.' });
+  }
 
   const body = req.body ?? {};
   const parsed = typeof body === 'string' ? (() => { try { return JSON.parse(body); } catch { return {}; } })() : body;

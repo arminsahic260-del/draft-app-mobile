@@ -37,7 +37,9 @@ export function useSettings() {
 
   useEffect(() => {
     if (!loaded) return;
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(settings)).catch(() => {});
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(settings)).catch((err) =>
+      console.warn('[useSettings] failed to persist settings:', err?.message ?? err),
+    );
   }, [settings, loaded]);
 
   const toggleSound = useCallback(() => {

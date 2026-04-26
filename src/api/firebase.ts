@@ -158,20 +158,34 @@ export async function getUserDoc(uid: string): Promise<UserDoc | null> {
   return snap.exists() ? (snap.data() as UserDoc) : null;
 }
 
-export async function incrementDraftCount(uid: string): Promise<{ count: number; isPro: boolean }> {
+/**
+ * Atomically check the daily draft cap and increment if allowed.
+ * If `freeLimit` is provided and the user is non-Pro and already at the cap,
+ * the count is NOT incremented and `allowed: false` is returned. This prevents
+ * the prior bug where tapping Start while at the cap consumed phantom slots.
+ */
+export async function incrementDraftCount(
+  uid: string,
+  freeLimit?: number,
+): Promise<{ count: number; isPro: boolean; allowed: boolean }> {
   const db  = getFirebaseDb();
   const ref = doc(db, 'users', uid);
 
   return runTransaction(db, async (transaction) => {
     const snap = await transaction.get(ref);
-    if (!snap.exists()) return { count: 0, isPro: false };
+    if (!snap.exists()) return { count: 0, isPro: false, allowed: true };
 
     const data = snap.data() as UserDoc;
     const isNewDay = data.lastDraftDate !== today();
-    const newCount = isNewDay ? 1 : data.dailyDraftCount + 1;
+    const currentCount = isNewDay ? 0 : data.dailyDraftCount;
 
+    if (!data.isPro && typeof freeLimit === 'number' && currentCount >= freeLimit) {
+      return { count: currentCount, isPro: false, allowed: false };
+    }
+
+    const newCount = currentCount + 1;
     transaction.update(ref, { dailyDraftCount: newCount, lastDraftDate: today() });
-    return { count: newCount, isPro: data.isPro };
+    return { count: newCount, isPro: data.isPro, allowed: true };
   });
 }
 

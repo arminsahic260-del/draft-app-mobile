@@ -98,7 +98,7 @@ export default function LivePcSessionCard({ player, selectedRole }: Props) {
   const handleEnterLive = () => {
     if (!player) return;
     setPlayer(player);
-    setRole(sessionRole ?? selectedRole ?? 'mid');
+    setRole(selectedRole ?? sessionRole ?? 'mid');
     setPracticeMode(false);
     setLiveMode(true);
     router.push('/draft');

@@ -182,13 +182,20 @@ export default function DraftScreen() {
     };
     // AsyncStorage (local)
     AsyncStorage.getItem('draft-history').then((raw) => {
-      const existing: LocalDraftRecord[] = JSON.parse(raw ?? '[]');
+      let existing: LocalDraftRecord[] = [];
+      try {
+        existing = JSON.parse(raw ?? '[]');
+      } catch (err) {
+        console.warn('[draft] corrupt draft-history, resetting:', (err as Error)?.message);
+      }
       const last = existing[0];
       if (!last || Math.abs(Number(record.id) - Number(last.id)) > 5000) {
         existing.unshift(record);
-        AsyncStorage.setItem('draft-history', JSON.stringify(existing.slice(0, 50)));
+        AsyncStorage.setItem('draft-history', JSON.stringify(existing.slice(0, 50))).catch(
+          (err) => console.warn('[draft] failed to write history:', err?.message ?? err),
+        );
       }
-    }).catch(() => {});
+    }).catch((err) => console.warn('[draft] failed to read history:', err?.message ?? err));
     // Firestore (cloud)
     if (isFirebaseConfigured && auth.user?.uid) {
       saveDraft({
@@ -198,7 +205,7 @@ export default function DraftScreen() {
         picks: draft.picks,
         bans: draft.bans,
         topRecommendation: recommendations[0]?.championId,
-      }).catch(() => {});
+      }).catch((err) => console.warn('[draft] failed to save to Firestore:', err?.message ?? err));
     }
   }, [draft.phase, role, auth.user?.uid, recommendations]);
 
@@ -257,7 +264,10 @@ export default function DraftScreen() {
             : 'bg-yellow-400'
           }`} />
           <Text className="text-xs font-semibold text-emerald-400">Live Mode</Text>
-          <Text className="text-[10px] text-lol-text">{liveStatusLabel}</Text>
+          <Text className="text-[10px] text-lol-text flex-1">{liveStatusLabel}</Text>
+          <Pressable onPress={() => { resetAll(); router.replace('/'); }}>
+            <Text className="text-[10px] text-lol-text/70 underline">Exit</Text>
+          </Pressable>
         </View>
       )}
 

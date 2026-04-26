@@ -268,11 +268,21 @@ export default function HistoryScreen() {
     autoReviewRan.current = true;
     const candidates = records.filter(needsReview);
     if (candidates.length === 0) return;
+    // Cap mount-time auto-review at 10 candidates and space them ~800ms apart.
+    // Each review fans out ~7 Riot calls (puuid + match list + match + 5 enemy
+    // mastery), so 10x reviews ~= 70 calls in ~8s — comfortably under the
+    // personal-key 100/2min budget. Older un-reviewed records get picked up on
+    // future visits.
+    const MAX_PER_MOUNT = 10;
+    const SPACING_MS = 800;
+    const queue = candidates.slice(0, MAX_PER_MOUNT);
     let cancelled = false;
     (async () => {
-      for (const rec of candidates) {
+      for (let i = 0; i < queue.length; i++) {
         if (cancelled) break;
-        await runReview(rec);
+        if (i > 0) await new Promise((r) => setTimeout(r, SPACING_MS));
+        if (cancelled) break;
+        await runReview(queue[i]);
       }
     })();
     return () => { cancelled = true; };
